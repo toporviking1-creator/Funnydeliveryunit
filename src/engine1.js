@@ -28,16 +28,17 @@ function he(s, m, f) { return s.f ? f : m; }
 function newGame(seed) {
   SEED = seed || Math.floor(Math.random() * 1e9) + 1;
   S = {
-    v: 1, t: 0, uid: 0, rng: SEED, over: false, auto: true, autoPause: true,
+    v: 2, t: 0, uid: 0, rng: SEED, over: false, auto: true, autoPause: true,
     P: {}, T: {}, staff: [], decisions: [], notes: [], log: [], scoreLog: [], review: [], modals: [], later: [],
     rooms: {}, queue: [], planned: [], nextBlogger: false,
     score: 0, vbi: 6, vbiPeak: 6, pauseReq: false,
     mod: { arrival: 1, arrivalUntil: 0, rest: 1, restUntil: 0 },
     slow: {}, ev: { next: rint(45, 80), used: {} }, dzm: null,
-    st: { arrivals: 0, births: 0, vag: 0, vep: 0, cs: 0, csEm: 0, csNeedless: 0, pph: 0, kas: 0, asph: 0, oritn: 0, chorio: 0, palata: 0, complaints: 0, noDoc: 0, dyst: 0, decOk: 0, decAll: 0, maxQueue: 0, dirtyUse: 0, cleaned: 0 },
+    st: { arrivals: 0, births: 0, vag: 0, vep: 0, cs: 0, csEm: 0, csNeedless: 0, pph: 0, kas: 0, asph: 0, oritn: 0, chorio: 0, palata: 0, complaints: 0, noDoc: 0, dyst: 0, decOk: 0, decAll: 0, maxQueue: 0, dirtyUse: 0, cleaned: 0, pmuBirths: 0, pmuStopped: 0, pmuMissed: 0 },
   };
   for (const id of BED_IDS) S.rooms[id] = { id, pid: null, dirty: false, cleanTask: null, dirtyAfter: false };
   for (const r of ROSTER) S.staff.push({ id: r.id, role: r.role, name: r.name, short: r.short, f: r.f || 0, energy: rint(80, 100), loc: r.start, dest: null, eta: 0, depart: 0, state: 'idle', taskId: null, slot: null, rest: false, forced: false, awayUntil: 0 });
+  for (const d of PMU_DOCS) S.staff.push({ id: d.id, role: 'pmu', name: d.name, short: d.short, f: d.f || 0, title: d.title, quirk: d.quirk, absurd: d.absurd, delay: d.delay, energy: 100, loc: 'priem', dest: null, eta: 0, depart: 0, state: 'away', taskId: null, slot: null, rest: false, forced: false, awayUntil: 1e9, out: true });
   handover();
   setupWaves();
   S.rng = SEED;
@@ -56,7 +57,7 @@ function sendTo(s, loc, fast) {
 function fits(role, need) {
   if (need === 'zav') return role === 'zav';
   if (need === 'any') return role !== 'obst';
-  if (need === 'obst') return role === 'obst' || role === 'zav';
+  if (need === 'obst') return role === 'obst' || role === 'zav' || role === 'pmu';
   if (need === 'neo') return role === 'neo' || role === 'reanim';
   return role === need;
 }
@@ -133,18 +134,21 @@ function costOf(s, tk, need) {
   return c;
 }
 function freePool(need, tk) {
-  return S.staff.filter(s => s.role !== 'zav' && fits(s.role, need) && !s.taskId && s.state !== 'away' && (s.state !== 'rest' || tk.pri >= 3 || s.energy >= 85));
+  return S.staff.filter(s => s.role !== 'zav' && s.role !== 'pmu' && fits(s.role, need) && !s.taskId && s.state !== 'away' && (s.state !== 'rest' || tk.pri >= 3 || s.energy >= 85));
 }
 function dispatch() {
   const list = openTasks().filter(tk => S.t >= tk.callAt).sort((a, b) => b.pri - a.pri || a.created - b.created);
   for (const tk of list) {
+    const pp = tk.pid ? pat(tk.pid) : null;
+    if (pp && pp.pmu) pmuFill(tk, pp);
     const m = missing(tk);
     for (const need in m) {
       if (need === 'zav') continue;
+      if (need === 'obst' && pp && pp.pmu && pp.flags.waitDoc) continue;
       if (need !== 'clean' && !S.auto) continue;
       for (let k = 0; k < m[need]; k++) {
         let c = freePool(need, tk);
-        if (!c.length && tk.pri >= 3) c = S.staff.filter(s => s.role !== 'zav' && fits(s.role, need) && s.taskId && task(s.taskId) && task(s.taskId).pri <= 1 && s.state !== 'away');
+        if (!c.length && tk.pri >= 3) c = S.staff.filter(s => s.role !== 'zav' && s.role !== 'pmu' && fits(s.role, need) && s.taskId && task(s.taskId) && task(s.taskId).pri <= 1 && s.state !== 'away');
         if (!c.length) break;
         c.sort((a, b) => costOf(a, tk, need) - costOf(b, tk, need));
         const s = c[0];
@@ -157,7 +161,7 @@ function dispatch() {
 /* ручное управление (зав командует) */
 function needFor(s, tk) {
   const m = missing(tk);
-  const order = s.role === 'zav' ? ['zav', 'obst', 'any'] : s.role === 'reanim' ? ['reanim', 'neo', 'any'] : [s.role, 'any'];
+  const order = s.role === 'pmu' ? ['obst'] : s.role === 'zav' ? ['zav', 'obst', 'any'] : s.role === 'reanim' ? ['reanim', 'neo', 'any'] : [s.role, 'any'];
   for (const n of order) if (m[n] && fits(s.role, n)) return n;
   return null;
 }
@@ -177,7 +181,7 @@ function release(id) { const s = staffBy(id); if (s && s.taskId) unassign(s); }
 function staffTick() {
   const night = isNight();
   for (const s of S.staff) {
-    if (s.state === 'away') { if (S.t >= s.awayUntil) { s.state = 'idle'; note(s.name + ' ' + he(s, 'вернулся', 'вернулась') + ' в родблок'); } continue; }
+    if (s.state === 'away') { if (S.t >= s.awayUntil) { s.state = 'idle'; note(s.role === 'pmu' ? 'Врач ПМУ ' + s.name + ' ' + he(s, 'приехал', 'приехала') : s.name + ' ' + he(s, 'вернулся', 'вернулась') + ' в родблок'); } continue; }
     if (s.state === 'walk' && S.t >= s.eta) {
       s.loc = s.dest; s.dest = null;
       s.state = s.taskId ? 'work' : (s.rest && s.loc === 'ord') ? 'rest' : 'idle';
@@ -187,7 +191,7 @@ function staffTick() {
     if (s.role === 'zav' && d < 0) d *= 0.8;
     s.energy = Math.max(0, Math.min(100, s.energy + d));
     if (s.state === 'rest' && ((!s.forced && s.energy >= 90) || s.energy >= 100)) { s.rest = false; s.forced = false; s.state = 'idle'; }
-    if (S.auto && s.role !== 'zav' && s.state === 'idle' && !s.taskId && s.energy < 25 && !s.rest) { s.rest = true; sendTo(s, 'ord'); if (s.loc === 'ord') s.state = 'rest'; }
+    if (S.auto && s.role !== 'zav' && s.role !== 'pmu' && s.state === 'idle' && !s.taskId && s.energy < 25 && !s.rest) { s.rest = true; sendTo(s, 'ord'); if (s.loc === 'ord') s.state = 'rest'; }
   }
   if (S.mod.restUntil && S.t >= S.mod.restUntil) { S.mod.rest = 1; S.mod.restUntil = 0; note('Кофемашину починили', 'good'); }
 }
@@ -250,6 +254,7 @@ function tick() {
   vbiTick();
   eventsTick();
   wavesTick();
+  pmuTick();
   if (S.t >= SHIFT) endShift();
   S.rng = SEED;
 }

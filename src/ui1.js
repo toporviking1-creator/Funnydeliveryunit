@@ -27,7 +27,7 @@ function lampState(loc) {
     if (tk.loc !== loc || !tk.lamps.length || S.t < tk.callAt) continue;
     for (const c of tk.lamps) {
       let roles = null;
-      if (c === 'g' && (tk.need.obst || tk.need.zav)) roles = ['obst', 'zav'];
+      if (c === 'g' && (tk.need.obst || tk.need.zav)) roles = ['obst', 'zav', 'pmu'];
       if (c === 'y' && (tk.need.neo || tk.need.reanim)) roles = ['neo', 'reanim'];
       const team = teamOf(tk, roles);
       const answered = roles ? team.some(s => s.state === 'work' && s.loc === tk.loc) : tk.started;
@@ -52,6 +52,7 @@ function ptChip(p, sm) {
 }
 function tagsOf(p, max) {
   const t = [];
+  if (p.flags.contract && p.pmu) t.push('<span class="tag g">ПМУ</span>');
   if (p.flags.pe) t.push('<span class="tag r">ПЭ</span>');
   if (p.flags.chorio && p.bornT == null) t.push('<span class="tag r">t°</span>');
   if (hasOpen(p, 'faint')) t.push('<span class="tag w">муж</span>');
@@ -138,6 +139,8 @@ function renderHUD() {
   renderBoss();
 }
 function staffState(s) {
+  if (s.role === 'pmu' && s.out) return 'не в отделении';
+  if (s.role === 'pmu' && s.state === 'away') return 'едет, ещё ' + Math.max(1, s.awayUntil - S.t) + ' мин';
   if (s.state === 'away') return 'в общей реанимации';
   if (s.state === 'rest') return 'спит в ординаторской';
   const tk = s.taskId && task(s.taskId);
@@ -146,11 +149,11 @@ function staffState(s) {
   return he(s, 'свободен', 'свободна') + (s.loc === 'ord' ? ', ординат.' : '');
 }
 function renderStaff() {
-  setHTML($('staffbar'), S.staff.map(s => `<button type="button" class="chip${s.role === 'zav' ? ' zav' : ''}" data-act="staff" data-id="${s.id}"><span class="cn"><i class="dot ${s.role}"></i>${s.role === 'zav' ? 'Зав · ты' : s.short + ' ' + esc(s.name)}</span><span class="cs">${esc(staffState(s))}</span><span class="en"><i style="width:${Math.round(s.energy)}%;background:${s.energy < 30 ? 'var(--lamp-r)' : s.energy < 55 ? 'var(--lamp-y)' : 'var(--lamp-g)'}"></i></span></button>`).join(''));
+  setHTML($('staffbar'), S.staff.filter(s => !s.out).map(s => `<button type="button" class="chip${s.role === 'zav' ? ' zav' : ''}" data-act="staff" data-id="${s.id}"><span class="cn"><i class="dot ${s.role}"></i>${s.role === 'zav' ? 'Зав · ты' : s.role === 'pmu' ? 'ПМУ · ' + esc(s.name) : s.short + ' ' + esc(s.name)}</span><span class="cs">${esc(staffState(s))}</span><span class="en"><i style="width:${Math.round(s.energy)}%;background:${s.energy < 30 ? 'var(--lamp-r)' : s.energy < 55 ? 'var(--lamp-y)' : 'var(--lamp-g)'}"></i></span></button>`).join(''));
 }
 function renderTray() {
   const pend = S.decisions.filter(d => !d.done).sort((a, b) => (b.red ? 1 : 0) - (a.red ? 1 : 0) || a.t - b.t);
-  let h = pend.map(d => { const p = pat(d.pid); const v = p ? shortLoc(p.loc || 'priem') : ''; const t = { triage: 'куда её?', ctgS: 'КТГ', ctgP: 'КТГ!', brady: 'брадикардия', pph: 'ПРК', dyst: 'дистоция', ecl: 'эклампсия', chorio: 'лихорадка' }[d.kind]; return `<button type="button" class="pill${d.red ? ' red' : ''}" data-act="dec" data-id="${d.id}">${esc(v)}: ${t}</button>`; }).join('');
+  let h = pend.map(d => { const p = pat(d.pid); const v = p ? shortLoc(p.loc || 'priem') : ''; const t = { triage: 'куда её?', ctgS: 'КТГ', ctgP: 'КТГ!', brady: 'брадикардия', pph: 'ПРК', dyst: 'дистоция', ecl: 'эклампсия', chorio: 'лихорадка', pmu: 'врач ПМУ' }[d.kind]; return `<button type="button" class="pill${d.red ? ' red' : d.pop ? ' pm' : ''}" data-act="dec" data-id="${d.id}">${esc(v)}: ${t}</button>`; }).join('');
   const zt = openTasks().filter(t => t.need.zav && !(t.slots.zav || []).length);
   h += zt.map(t => `<button type="button" class="pill zv" data-act="zavgo" data-task="${t.id}">Зав нужен: ${esc(t.label.toLowerCase())}</button>`).join('');
   setHTML($('tray'), h);

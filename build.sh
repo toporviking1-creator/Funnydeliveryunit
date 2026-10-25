@@ -24,7 +24,7 @@ HEAD
   printf '</style>\n</head>\n<body>\n'
   cat src/body.html
   printf '<script>\n'
-  cat src/data.js src/engine1.js src/engine2.js src/engine3.js src/engine4.js src/ui1.js src/ui3.js src/ui2.js
+  cat src/data.js src/engine1.js src/engine2.js src/engine3.js src/engine4.js src/engine5.js src/ui1.js src/ui3.js src/ui2.js
   printf '</script>\n</body>\n</html>\n'
 } > index.html
 echo "index.html: $(wc -c < index.html) байт"

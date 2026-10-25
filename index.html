@@ -247,6 +247,12 @@ h3 { font-size: 15px; margin: 0; }
 .boss.warn { background: var(--lamp-y); color: #1A1200; animation: pulse 1.4s ease-in-out infinite; }
 .qd.opb { background: var(--violet); border-color: var(--violet); }
 @media (prefers-reduced-motion: reduce) { .boss.warn { animation: none; } }
+.tok.pmu { background: var(--paper); color: var(--ink); border: 2.5px solid var(--gold); }
+.dot.pmu { background: var(--paper); border-color: var(--gold); }
+.tag.g { color: var(--warn); }
+.card.gold { border-color: var(--gold); box-shadow: 0 0 0 4px color-mix(in srgb, var(--gold) 35%, transparent); }
+.card.gold .eyebrow { color: var(--warn); }
+.pill.pm { border-color: var(--gold); color: var(--gold); }
 </style>
 </head>
 <body>
@@ -513,16 +519,17 @@ function he(s, m, f) { return s.f ? f : m; }
 function newGame(seed) {
   SEED = seed || Math.floor(Math.random() * 1e9) + 1;
   S = {
-    v: 1, t: 0, uid: 0, rng: SEED, over: false, auto: true, autoPause: true,
+    v: 2, t: 0, uid: 0, rng: SEED, over: false, auto: true, autoPause: true,
     P: {}, T: {}, staff: [], decisions: [], notes: [], log: [], scoreLog: [], review: [], modals: [], later: [],
     rooms: {}, queue: [], planned: [], nextBlogger: false,
     score: 0, vbi: 6, vbiPeak: 6, pauseReq: false,
     mod: { arrival: 1, arrivalUntil: 0, rest: 1, restUntil: 0 },
     slow: {}, ev: { next: rint(45, 80), used: {} }, dzm: null,
-    st: { arrivals: 0, births: 0, vag: 0, vep: 0, cs: 0, csEm: 0, csNeedless: 0, pph: 0, kas: 0, asph: 0, oritn: 0, chorio: 0, palata: 0, complaints: 0, noDoc: 0, dyst: 0, decOk: 0, decAll: 0, maxQueue: 0, dirtyUse: 0, cleaned: 0 },
+    st: { arrivals: 0, births: 0, vag: 0, vep: 0, cs: 0, csEm: 0, csNeedless: 0, pph: 0, kas: 0, asph: 0, oritn: 0, chorio: 0, palata: 0, complaints: 0, noDoc: 0, dyst: 0, decOk: 0, decAll: 0, maxQueue: 0, dirtyUse: 0, cleaned: 0, pmuBirths: 0, pmuStopped: 0, pmuMissed: 0 },
   };
   for (const id of BED_IDS) S.rooms[id] = { id, pid: null, dirty: false, cleanTask: null, dirtyAfter: false };
   for (const r of ROSTER) S.staff.push({ id: r.id, role: r.role, name: r.name, short: r.short, f: r.f || 0, energy: rint(80, 100), loc: r.start, dest: null, eta: 0, depart: 0, state: 'idle', taskId: null, slot: null, rest: false, forced: false, awayUntil: 0 });
+  for (const d of PMU_DOCS) S.staff.push({ id: d.id, role: 'pmu', name: d.name, short: d.short, f: d.f || 0, title: d.title, quirk: d.quirk, absurd: d.absurd, delay: d.delay, energy: 100, loc: 'priem', dest: null, eta: 0, depart: 0, state: 'away', taskId: null, slot: null, rest: false, forced: false, awayUntil: 1e9, out: true });
   handover();
   setupWaves();
   S.rng = SEED;
@@ -541,7 +548,7 @@ function sendTo(s, loc, fast) {
 function fits(role, need) {
   if (need === 'zav') return role === 'zav';
   if (need === 'any') return role !== 'obst';
-  if (need === 'obst') return role === 'obst' || role === 'zav';
+  if (need === 'obst') return role === 'obst' || role === 'zav' || role === 'pmu';
   if (need === 'neo') return role === 'neo' || role === 'reanim';
   return role === need;
 }
@@ -618,18 +625,21 @@ function costOf(s, tk, need) {
   return c;
 }
 function freePool(need, tk) {
-  return S.staff.filter(s => s.role !== 'zav' && fits(s.role, need) && !s.taskId && s.state !== 'away' && (s.state !== 'rest' || tk.pri >= 3 || s.energy >= 85));
+  return S.staff.filter(s => s.role !== 'zav' && s.role !== 'pmu' && fits(s.role, need) && !s.taskId && s.state !== 'away' && (s.state !== 'rest' || tk.pri >= 3 || s.energy >= 85));
 }
 function dispatch() {
   const list = openTasks().filter(tk => S.t >= tk.callAt).sort((a, b) => b.pri - a.pri || a.created - b.created);
   for (const tk of list) {
+    const pp = tk.pid ? pat(tk.pid) : null;
+    if (pp && pp.pmu) pmuFill(tk, pp);
     const m = missing(tk);
     for (const need in m) {
       if (need === 'zav') continue;
+      if (need === 'obst' && pp && pp.pmu && pp.flags.waitDoc) continue;
       if (need !== 'clean' && !S.auto) continue;
       for (let k = 0; k < m[need]; k++) {
         let c = freePool(need, tk);
-        if (!c.length && tk.pri >= 3) c = S.staff.filter(s => s.role !== 'zav' && fits(s.role, need) && s.taskId && task(s.taskId) && task(s.taskId).pri <= 1 && s.state !== 'away');
+        if (!c.length && tk.pri >= 3) c = S.staff.filter(s => s.role !== 'zav' && s.role !== 'pmu' && fits(s.role, need) && s.taskId && task(s.taskId) && task(s.taskId).pri <= 1 && s.state !== 'away');
         if (!c.length) break;
         c.sort((a, b) => costOf(a, tk, need) - costOf(b, tk, need));
         const s = c[0];
@@ -642,7 +652,7 @@ function dispatch() {
 /* ручное управление (зав командует) */
 function needFor(s, tk) {
   const m = missing(tk);
-  const order = s.role === 'zav' ? ['zav', 'obst', 'any'] : s.role === 'reanim' ? ['reanim', 'neo', 'any'] : [s.role, 'any'];
+  const order = s.role === 'pmu' ? ['obst'] : s.role === 'zav' ? ['zav', 'obst', 'any'] : s.role === 'reanim' ? ['reanim', 'neo', 'any'] : [s.role, 'any'];
   for (const n of order) if (m[n] && fits(s.role, n)) return n;
   return null;
 }
@@ -662,7 +672,7 @@ function release(id) { const s = staffBy(id); if (s && s.taskId) unassign(s); }
 function staffTick() {
   const night = isNight();
   for (const s of S.staff) {
-    if (s.state === 'away') { if (S.t >= s.awayUntil) { s.state = 'idle'; note(s.name + ' ' + he(s, 'вернулся', 'вернулась') + ' в родблок'); } continue; }
+    if (s.state === 'away') { if (S.t >= s.awayUntil) { s.state = 'idle'; note(s.role === 'pmu' ? 'Врач ПМУ ' + s.name + ' ' + he(s, 'приехал', 'приехала') : s.name + ' ' + he(s, 'вернулся', 'вернулась') + ' в родблок'); } continue; }
     if (s.state === 'walk' && S.t >= s.eta) {
       s.loc = s.dest; s.dest = null;
       s.state = s.taskId ? 'work' : (s.rest && s.loc === 'ord') ? 'rest' : 'idle';
@@ -672,7 +682,7 @@ function staffTick() {
     if (s.role === 'zav' && d < 0) d *= 0.8;
     s.energy = Math.max(0, Math.min(100, s.energy + d));
     if (s.state === 'rest' && ((!s.forced && s.energy >= 90) || s.energy >= 100)) { s.rest = false; s.forced = false; s.state = 'idle'; }
-    if (S.auto && s.role !== 'zav' && s.state === 'idle' && !s.taskId && s.energy < 25 && !s.rest) { s.rest = true; sendTo(s, 'ord'); if (s.loc === 'ord') s.state = 'rest'; }
+    if (S.auto && s.role !== 'zav' && s.role !== 'pmu' && s.state === 'idle' && !s.taskId && s.energy < 25 && !s.rest) { s.rest = true; sendTo(s, 'ord'); if (s.loc === 'ord') s.state = 'rest'; }
   }
   if (S.mod.restUntil && S.t >= S.mod.restUntil) { S.mod.rest = 1; S.mod.restUntil = 0; note('Кофемашину починили', 'good'); }
 }
@@ -735,6 +745,7 @@ function tick() {
   vbiTick();
   eventsTick();
   wavesTick();
+  pmuTick();
   if (S.t >= SHIFT) endShift();
   S.rng = SEED;
 }
@@ -766,6 +777,7 @@ function makePatient(kind, noQueue) {
   initLab(p);
   S.P[p.id] = p;
   if (!noQueue) { S.queue.push(p.id); S.st.arrivals++; }
+  assignPMU(p);
   return p;
 }
 function initLab(p) {
@@ -838,7 +850,7 @@ function mwDelay(z) {
 function zoneLoad(z) { let n = 0; for (const id of BOX_IDS) if (zoneOf(id) === z && S.rooms[id].pid) n++; return n; }
 function complaint(p, reason) {
   S.st.complaints++;
-  const pen = p && p.flags.blogger ? 30 : 15;
+  const pen = p && p.flags.blogger ? 30 : p && p.flags.contract ? 25 : 15;
   addScore(-pen, 'Жалоба: ' + reason);
   if (p) p.flags.complained = true;
   note('Жалоба: ' + reason + (p && p.flags.blogger ? ' — и пост в соцсетях' : ''), 'bad');
@@ -887,16 +899,19 @@ function deliver(p) {
   cancelTasks(p, ['vep', 'ctg', 'epid', 'cs', 'chorio', 'mg']);
   if (p.want === 'or') p.want = null;
   const tk = p.birthTask ? task(p.birthTask) : null;
-  p.obstAt = present(tk, ['obst', 'zav']);
+  p.obstAt = present(tk, ['obst', 'zav', 'pmu']);
   p.neoAt = present(tk, ['neo', 'reanim']);
   const where = p.loc || 'priem';
-  if (!isBox(where) && !isOR(where) && !p.flags.lift) {
+  const shop = p.shopUntil && S.t < p.shopUntil;
+  if (shop) { p.obstAt = false; p.neoAt = false; S.st.palata++; p.flags.outside = true; addScore(-20, 'Роды по дороге из магазина'); note(p.name + ' родила в такси по дороге из магазина!', 'bad'); complaint(p, 'в родах отпустили в магазин'); }
+  else if (!isBox(where) && !isOR(where) && !p.flags.lift) {
     S.st.palata++; p.flags.outside = true; addScore(-20, 'Роды вне бокса');
     note('Роды прямо здесь: ' + locName(where) + '!', 'bad');
     if (S.rooms[where]) S.rooms[where].dirtyAfter = true;
   }
   if (!p.obstAt) { S.st.noDoc++; addScore(-6, 'Роды без врача'); note(locName(where) + ': роды приняла акушерка, врача не было', 'warn'); }
-  if (chance(0.012 + (p.big ? 0.06 : 0))) { startDyst(p); return; }
+  if (p.flags.kristeller) addScore(-10, 'Приём Кристеллера');
+  if (chance(0.012 + (p.big ? 0.06 : 0) + (p.flags.kristeller ? 0.05 : 0))) { startDyst(p); return; }
   born(p, 'vag');
 }
 function born(p, mode) {
@@ -911,6 +926,7 @@ function born(p, mode) {
   note(locName(p.loc || 'priem') + ': ' + (p.girl ? 'девочка' : 'мальчик') + ' ' + p.weight + ' г, Апгар ' + a + '/' + Math.min(10, a + (a < 7 ? 2 : 1)), a >= 7 ? 'good' : 'bad');
   if (a < 7) startResus(p);
   else if (p.ga <= 34 || (p.flags.chorio && !p.flags.abx)) transferBaby(p);
+  if (p.flags.contract) { S.st.pmuBirths++; if (a >= 7 && !p.flags.complained) addScore(8, 'Довольная контрактная пациентка'); }
   if (p.flags.blogger && a >= 7 && !p.flags.complained) { addScore(25, 'Сторис блогерши'); note('Блогерша выложила сторис «лучший роддом Москвы»', 'good'); }
   if (mode !== 'cs') {
     p.phase = 'pp'; p.ppEnd = S.t + 120; pphRoll(p);
@@ -929,6 +945,7 @@ function apgar(p) {
   if (p.flags.dystBad) a -= 4;
   if (p.flags.abrupt) a -= p.abruptLate ? 4 : 2;
   if (p.flags.ecl && !p.eclOk) a -= 2;
+  if (p.flags.kristeller) a -= 1;
   return Math.max(1, Math.min(9, a));
 }
 function startResus(p) {
@@ -974,11 +991,12 @@ FAIL.pph = tk => { const p = pat(tk.pid); if (p) p.pphOk = false; tk.startT = nu
 
 /* ---------- КТГ и экстренные ---------- */
 function ctgTick(p) {
-  if (p.em || p.bornT != null) return;
+  if (p.em || p.bornT != null || (p.shopUntil && S.t < p.shopUntil)) return;
   if (p.ctgFixAt && S.t >= p.ctgFixAt) { p.ctgFixAt = null; if (p.ctg === 'S' && chance(0.8)) { p.ctg = 'N'; p.ctgCare = false; note(locName(p.loc) + ': КТГ нормализовалась', 'good'); } }
   let hz = 0.00008;
   if (p.flags.epid && S.t - p.epidAt < 25) hz += 0.0012;
   if (p.flags.oxy) hz += 0.00025;
+  if (p.flags.oxyMax) hz += 0.0012;
   if (p.ctg === 'P') hz += 0.0025;
   if (chance(hz)) { startBrady(p); return; }
   if (p.ctg === 'N' && chance(0.0011)) { p.ctg = 'S'; p.ctgT = S.t; callCTG(p); }
@@ -986,7 +1004,7 @@ function ctgTick(p) {
 }
 function hasOpen(p, type) { return p.tasks.some(id => { const t = task(id); return t && !t.done && t.type === type; }); }
 function callCTG(p) {
-  if (hasOpen(p, 'ctg')) return;
+  if (hasOpen(p, 'ctg') || p.flags.noCtg) return;
   addTask({ type: 'ctg', loc: p.loc, pid: p.id, label: 'Посмотреть КТГ', need: { obst: 1 }, dur: 5, pri: p.ctg === 'P' ? 2 : 1, lamps: ['g'], callAt: S.t + mwDelay(zoneOf(p.loc)) });
 }
 HANDLERS.ctg = tk => { const p = pat(tk.pid); if (!p || p.bornT != null || p.em) return; if (p.ctg === 'S' || p.ctg === 'P') addDecision({ kind: p.ctg === 'S' ? 'ctgS' : 'ctgP', pid: p.id }); };
@@ -1152,7 +1170,8 @@ function dilText(p) {
 function decisionView(d) {
   const p = pat(d.pid); if (!p) return null;
   const where = locName(p.loc || 'priem');
-  const base = { where, who: patLine(p), red: !!d.red };
+  const base = { where, who: patLine(p), red: !!d.red, pop: !!d.pop };
+  if (d.kind === 'pmu') return pmuView(d, p, base);
   if (d.kind === 'triage') {
     const c = CASE[p.kind] || CASE.active;
     const extra = p.flags.blogger ? ' Принесла план родов на 12 листах.' : '';
@@ -1195,6 +1214,7 @@ function decide(id, idx) { const d = S.decisions.find(x => x.id === id); if (!d 
 function decisionsTick() {
   for (const d of S.decisions) {
     if (d.done) continue;
+    if (d.kind === 'pmu') { if (S.t - d.t >= 12) { const v = decisionView(d); applyDecision(d, v ? Math.max(0, v.options.findIndex(o => o.k === 'allow')) : 0, false); note('Врач ПМУ не дождался зава и сделал по-своему', 'warn'); } continue; }
     const lim = d.red ? 4 : d.kind === 'triage' ? 25 : 20;
     if (S.t - d.t >= lim) {
       const v = decisionView(d);
@@ -1343,9 +1363,9 @@ function dzmEval(withZav) {
 
 /* ---------- конец смены ---------- */
 const GRADES = [
-  { min: 650, stars: 3, title: 'Зав года' },
-  { min: 400, stars: 2, title: 'Нормальные сутки' },
-  { min: 100, stars: 1, title: 'Объяснительная главврачу' },
+  { min: 750, stars: 3, title: 'Зав года' },
+  { min: 450, stars: 2, title: 'Нормальные сутки' },
+  { min: 150, stars: 1, title: 'Объяснительная главврачу' },
   { min: -1e9, stars: 0, title: 'Комиссия ДЗМ в понедельник' },
 ];
 function endShift() {
@@ -1429,6 +1449,148 @@ function loseWave(w, D) {
   complaint(null, D.k === 'opb' ? 'заведующая ОПБ написала главврачу' : 'пациентки часами ждали места');
   card('Босс победил', D.name + ': за ' + D.limit + ' минут не разместили ещё ' + w.left + '. −30 и жалоба.', null, 'bosslose');
 }
+/* ===== РОДБЛОК · врачи ПМУ ===== */
+const PMU_DOCS = [
+  { id: 'p1', name: 'Звездин', short: 'Зв', title: 'профессор', quirk: 'любит кесарево и театр', absurd: 0.8, delay: [5, 20] },
+  { id: 'p2', name: 'Глянцева', short: 'Гл', title: 'врач-блогер', quirk: 'снимает сторис, против «химии»', absurd: 0.8, delay: [10, 25], f: 1 },
+  { id: 'p3', name: 'Пупкин', short: 'Пу', title: 'доктор', quirk: 'вечно в пробке, командует по телефону', absurd: 0.75, delay: [30, 60] },
+  { id: 'p4', name: 'Рыбкина', short: 'Ры', title: 'к.м.н.', quirk: 'почти всегда права', absurd: 0.15, delay: [5, 15], f: 1 },
+];
+ROLES.pmu = 'Врач ПМУ (контракт)';
+const PMU_KINDS = ['active', 'latent', 'prom', 'pe', 'planned'];
+const PMU_VAR = {
+  csTheatre: { absurd: true, docs: ['p1'], cond: p => (p.lab === 'active' || p.lab === 'latent') && p.dil < 8 && p.ctg === 'N',
+    quote: p => `Кесарим. Раскрытие ${Math.floor(p.dil)} см, КТГ — норма, но у меня в 19:00 театр.`,
+    allow: p => { p.flags.needlessCS = true; requestCS(p, 2); },
+    why: 'Желание врача успеть в театр — не показание к КС: КТГ в норме, роды идут.' },
+  oxyMax: { absurd: true, docs: ['p1'], cond: p => p.lab === 'active' && !p.flags.oxy && p.ctg === 'N',
+    quote: () => 'Окситоцин на максимум — пусть родит до обеда.',
+    allow: p => { p.flags.oxy = true; p.flags.oxyMax = true; },
+    why: 'Родостимуляция без показаний при нормальной динамике ведёт к гиперстимуляции и дистрессу плода.' },
+  noCtg: { absurd: true, docs: ['p2'], cond: p => (p.lab === 'active' || p.lab === 'second') && isBox(p.loc) && !p.flags.noCtg,
+    quote: () => 'Снимаем датчики КТГ — мешают снимать сторис.',
+    allow: p => { p.flags.noCtg = true; },
+    why: 'В родах нужен контроль состояния плода — без КТГ ухудшение пропустят.' },
+  tea: { absurd: true, docs: ['p2'], cond: p => p.flags.chorio && !p.flags.abx,
+    quote: () => 'Антибиотики — это химия. Даём травяной чай.',
+    allow: p => { p.flags.tea = true; },
+    veto: p => { p.flags.abx = true; },
+    why: 'При хориоамнионите нужны антибиотики широкого спектра, чай их не заменит.' },
+  shop: { absurd: true, docs: ['p3'], cond: p => p.lab === 'active' && p.dil >= 5 && p.dil < 8,
+    quote: p => `Отпустите её прогуляться до магазина, раскрытие всего ${Math.floor(p.dil)} см. Я подъеду.`,
+    allow: p => { p.shopUntil = S.t + 45; },
+    why: 'В активной фазе родов пациентка остаётся в боксе под наблюдением.' },
+  wait: { absurd: true, docs: ['p3'], phone: true, cond: (p, d) => p.lab === 'second' && d.state === 'away',
+    quote: () => 'Я в пробке. Скажите ей пока не тужиться — рожаем только при мне.',
+    allow: p => { p.flags.waitDoc = true; },
+    why: 'Потужной период не откладывают до приезда врача: роды ведёт дежурная бригада.' },
+  kristeller: { absurd: true, docs: ['p1', 'p3'], cond: p => p.lab === 'second',
+    quote: () => 'Давите на дно матки — ускорим потуги.',
+    allow: p => { p.flags.kristeller = true; },
+    why: 'Давление на дно матки (приём Кристеллера) не рекомендуется: риск травмы матери и плода.' },
+  epid: { absurd: false, cond: p => p.lab === 'active' && p.dil >= 4 && p.dil < 8 && !p.flags.epid && !hasOpen(p, 'epid') && isBox(p.loc),
+    quote: p => `Пациентка просит обезболивание, раскрытие ${Math.floor(p.dil)} см. Зову анестезиолога на ЭА.`,
+    allow: p => { addTask({ type: 'epid', loc: p.loc, pid: p.id, label: 'Эпидуральная анальгезия', need: { anest: 1 }, dur: 15, pri: 1, deadline: S.t + 40 }); },
+    why: 'Просьба пациентки — достаточное основание для ЭА, если нет противопоказаний.' },
+  amnio: { absurd: false, cond: p => p.lab === 'active' && p.dil >= 6 && p.dil < 9 && !p.flags.prom && !p.flags.amnio,
+    quote: p => `Раскрытие ${Math.floor(p.dil)} см, плодный пузырь цел, схватки ослабли. Делаю амниотомию.`,
+    allow: p => { p.flags.amnio = true; p.actRate *= 1.25; },
+    why: 'Амниотомия в активной фазе при ослаблении схваток — разумный шаг.' },
+  oxyOk: { absurd: false, cond: p => p.lab === 'active' && !p.flags.oxy && p.ctg === 'N',
+    quote: p => `Два часа без динамики на ${Math.floor(p.dil)} см, КТГ — норма. Начинаю окситоцин.`,
+    allow: p => { p.flags.oxy = true; p.actRate *= 1.4; },
+    why: 'Вторичная слабость родовой деятельности при нормальной КТГ — показание к родоусилению окситоцином.' },
+  vepOk: { absurd: false, cond: p => p.lab === 'second' && p.lowHead && isBox(p.loc) && S.t - p.secondStart > 15,
+    quote: () => 'Полное раскрытие, головка на тазовом дне, потуги неэффективны. Накладываю вакуум.',
+    allow: p => { startVEP(p, 2); },
+    why: 'Неэффективные потуги при головке на тазовом дне — показание к ВЭП.' },
+};
+function pmuDocs() { return S.staff.filter(s => s.role === 'pmu'); }
+function pmuPatients(id) { return Object.values(S.P).filter(p => p.pmu === id && p.phase !== 'gone'); }
+function assignPMU(p) {
+  if (!PMU_KINDS.includes(p.kind) || !chance(0.24)) return;
+  const cand = pmuDocs().filter(d => pmuPatients(d.id).length < 2);
+  if (!cand.length) return;
+  const d = pick(cand);
+  p.pmu = d.id; p.flags.contract = true;
+  if (d.out) {
+    d.out = false; d.state = 'away'; d.awayUntil = S.t + rint(d.delay[0], d.delay[1]); d.loc = 'priem'; d.energy = 100;
+    note('Врач ПМУ ' + d.name + ' едет к своей контрактной: ' + p.name);
+  }
+}
+function pmuFill(tk, p) {
+  const doc = staffBy(p.pmu);
+  if (!doc || doc.out || doc.state === 'away' || doc.taskId || !tk.need.obst) return;
+  if (missing(tk).obst) { assign(doc, tk, 'obst'); return; }
+  if (tk.started) return;
+  const duty = (tk.slots.obst || []).map(staffBy).find(s => s && s.role === 'obst' && !(s.state === 'work' && s.loc === tk.loc));
+  if (duty) { unassign(duty); assign(doc, tk, 'obst'); }
+}
+function pmuDismiss(id) {
+  const d = staffBy(id); if (!d) return;
+  for (const p of pmuPatients(id)) p.pmu = null;
+  if (d.taskId) unassign(d);
+  note('Пациенток врача ПМУ ' + d.name + ' ведёт дежурная бригада', 'warn');
+}
+function pmuTick() {
+  for (const d of pmuDocs()) {
+    if (d.out) continue;
+    const mine = pmuPatients(d.id);
+    if (!mine.length && !d.taskId && d.state !== 'away') {
+      d.out = true; d.state = 'away'; d.awayUntil = 1e9; d.rest = false;
+      note('Врач ПМУ ' + d.name + ' ' + he(d, 'уехал', 'уехала') + ', оставив коробку конфет', 'good');
+      continue;
+    }
+    for (const p of mine) {
+      if (p.bornT != null || (p.pmuN || 0) >= 2 || (p.pmuNext && S.t < p.pmuNext)) continue;
+      if (S.decisions.some(x => !x.done && x.pid === p.id && x.kind === 'pmu')) continue;
+      if (!chance(0.0045)) continue;
+      const absurd = chance(d.absurd);
+      const pool = Object.keys(PMU_VAR).filter(k => {
+        const V = PMU_VAR[k];
+        if (V.absurd !== absurd) return false;
+        if (V.docs && !V.docs.includes(d.id) && d.id !== 'p4') return false;
+        if (!V.phone && d.state === 'away') return false;
+        return V.cond(p, d);
+      });
+      if (!pool.length) continue;
+      p.pmuN = (p.pmuN || 0) + 1; p.pmuNext = S.t + 90;
+      addDecision({ kind: 'pmu', pid: p.id, v: pick(pool), doc: d.id, pop: true });
+      S.pauseReq = true;
+    }
+  }
+}
+const ctgWord = p => ({ N: 'норма', S: 'сомнительная', P: 'патологическая', B: 'брадикардия', T: 'тахикардия' }[p.ctg] || 'норма');
+function pmuView(d, p, base) {
+  const V = PMU_VAR[d.v], doc = staffBy(d.doc);
+  if (!V) return null;
+  return Object.assign(base, {
+    title: 'Решение врача ПМУ',
+    clue: (doc ? cap(doc.title) + ' ' + doc.name : 'Врач ПМУ') + (doc && doc.state === 'away' ? ' по телефону' : '') + ': «' + V.quote(p) + '»',
+    fact: 'Объективно: ' + dilText(p) + ', КТГ — ' + ctgWord(p) + '.',
+    ctg: ['N', 'S', 'P'].includes(p.ctg) ? p.ctg : null,
+    options: [
+      { k: 'allow', label: 'Разрешить', ok: !V.absurd },
+      { k: 'veto', label: 'Запретить — ведём по протоколу', ok: V.absurd },
+      { k: 'take', label: 'Забрать пациентку дежурной бригаде', ok: V.absurd },
+    ],
+    why: V.why,
+  });
+}
+APPLY.pmu = (d, k) => {
+  const p = pat(d.pid); if (!p || p.phase === 'gone') return;
+  const V = PMU_VAR[d.v], doc = staffBy(d.doc); if (!V) return;
+  if (V.absurd) { if (k === 'allow') S.st.pmuMissed++; else S.st.pmuStopped++; }
+  if (k === 'allow') { if (p.bornT == null) V.allow(p); return; }
+  if (V.veto && p.bornT == null) V.veto(p);
+  if (!V.absurd) complaint(p, 'контрактной пациентке отказали без причины');
+  const sulk = k === 'veto' && V.absurd && chance(0.25);
+  if (k === 'take' || sulk) {
+    if (sulk && doc) note('Врач ПМУ ' + doc.name + ' ' + he(doc, 'обиделся', 'обиделась') + ' — пациентку ведут дежурные', 'warn');
+    p.pmu = null;
+    if (doc && doc.taskId && task(doc.taskId) && task(doc.taskId).pid === p.id) unassign(doc);
+  }
+};
 /* ===== РОДБЛОК · интерфейс: план этажа ===== */
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -1458,7 +1620,7 @@ function lampState(loc) {
     if (tk.loc !== loc || !tk.lamps.length || S.t < tk.callAt) continue;
     for (const c of tk.lamps) {
       let roles = null;
-      if (c === 'g' && (tk.need.obst || tk.need.zav)) roles = ['obst', 'zav'];
+      if (c === 'g' && (tk.need.obst || tk.need.zav)) roles = ['obst', 'zav', 'pmu'];
       if (c === 'y' && (tk.need.neo || tk.need.reanim)) roles = ['neo', 'reanim'];
       const team = teamOf(tk, roles);
       const answered = roles ? team.some(s => s.state === 'work' && s.loc === tk.loc) : tk.started;
@@ -1483,6 +1645,7 @@ function ptChip(p, sm) {
 }
 function tagsOf(p, max) {
   const t = [];
+  if (p.flags.contract && p.pmu) t.push('<span class="tag g">ПМУ</span>');
   if (p.flags.pe) t.push('<span class="tag r">ПЭ</span>');
   if (p.flags.chorio && p.bornT == null) t.push('<span class="tag r">t°</span>');
   if (hasOpen(p, 'faint')) t.push('<span class="tag w">муж</span>');
@@ -1569,6 +1732,8 @@ function renderHUD() {
   renderBoss();
 }
 function staffState(s) {
+  if (s.role === 'pmu' && s.out) return 'не в отделении';
+  if (s.role === 'pmu' && s.state === 'away') return 'едет, ещё ' + Math.max(1, s.awayUntil - S.t) + ' мин';
   if (s.state === 'away') return 'в общей реанимации';
   if (s.state === 'rest') return 'спит в ординаторской';
   const tk = s.taskId && task(s.taskId);
@@ -1577,11 +1742,11 @@ function staffState(s) {
   return he(s, 'свободен', 'свободна') + (s.loc === 'ord' ? ', ординат.' : '');
 }
 function renderStaff() {
-  setHTML($('staffbar'), S.staff.map(s => `<button type="button" class="chip${s.role === 'zav' ? ' zav' : ''}" data-act="staff" data-id="${s.id}"><span class="cn"><i class="dot ${s.role}"></i>${s.role === 'zav' ? 'Зав · ты' : s.short + ' ' + esc(s.name)}</span><span class="cs">${esc(staffState(s))}</span><span class="en"><i style="width:${Math.round(s.energy)}%;background:${s.energy < 30 ? 'var(--lamp-r)' : s.energy < 55 ? 'var(--lamp-y)' : 'var(--lamp-g)'}"></i></span></button>`).join(''));
+  setHTML($('staffbar'), S.staff.filter(s => !s.out).map(s => `<button type="button" class="chip${s.role === 'zav' ? ' zav' : ''}" data-act="staff" data-id="${s.id}"><span class="cn"><i class="dot ${s.role}"></i>${s.role === 'zav' ? 'Зав · ты' : s.role === 'pmu' ? 'ПМУ · ' + esc(s.name) : s.short + ' ' + esc(s.name)}</span><span class="cs">${esc(staffState(s))}</span><span class="en"><i style="width:${Math.round(s.energy)}%;background:${s.energy < 30 ? 'var(--lamp-r)' : s.energy < 55 ? 'var(--lamp-y)' : 'var(--lamp-g)'}"></i></span></button>`).join(''));
 }
 function renderTray() {
   const pend = S.decisions.filter(d => !d.done).sort((a, b) => (b.red ? 1 : 0) - (a.red ? 1 : 0) || a.t - b.t);
-  let h = pend.map(d => { const p = pat(d.pid); const v = p ? shortLoc(p.loc || 'priem') : ''; const t = { triage: 'куда её?', ctgS: 'КТГ', ctgP: 'КТГ!', brady: 'брадикардия', pph: 'ПРК', dyst: 'дистоция', ecl: 'эклампсия', chorio: 'лихорадка' }[d.kind]; return `<button type="button" class="pill${d.red ? ' red' : ''}" data-act="dec" data-id="${d.id}">${esc(v)}: ${t}</button>`; }).join('');
+  let h = pend.map(d => { const p = pat(d.pid); const v = p ? shortLoc(p.loc || 'priem') : ''; const t = { triage: 'куда её?', ctgS: 'КТГ', ctgP: 'КТГ!', brady: 'брадикардия', pph: 'ПРК', dyst: 'дистоция', ecl: 'эклампсия', chorio: 'лихорадка', pmu: 'врач ПМУ' }[d.kind]; return `<button type="button" class="pill${d.red ? ' red' : d.pop ? ' pm' : ''}" data-act="dec" data-id="${d.id}">${esc(v)}: ${t}</button>`; }).join('');
   const zt = openTasks().filter(t => t.need.zav && !(t.slots.zav || []).length);
   h += zt.map(t => `<button type="button" class="pill zv" data-act="zavgo" data-task="${t.id}">Зав нужен: ${esc(t.label.toLowerCase())}</button>`).join('');
   setHTML($('tray'), h);
@@ -1646,6 +1811,12 @@ function renderBoss() {
     el.hidden = false; setCls(el, 'boss warn');
     setHTML(el, `<b>СКОРО</b><span class="bn">${esc(D.name)} · ${warn.size}</span><span class="bt">через ${Math.max(0, warn.t - S.t)} мин</span>`);
   } else el.hidden = true;
+}
+function pmuSheet(s) {
+  const mine = pmuPatients(s.id);
+  let h = `<div class="eyebrow">Врач ПМУ · ${esc(s.title)}</div><h2>${esc(s.name)}</h2><div class="who">${esc(s.quirk)} · ${esc(staffState(s))}</div>`;
+  h += mine.length ? `<div class="who">Ведёт: ${mine.map(p => esc(p.name) + ' (' + esc(shortLoc(p.loc || 'priem')) + ')').join(', ')}</div><button type="button" class="btn o" data-act="pmuoff" data-id="${s.id}">Забрать ${he(s, 'его', 'её')} пациенток дежурным</button>` : '<p class="who">Своих пациенток сейчас нет.</p>';
+  return h + closeBtn();
 }
 /* ===== РОДБЛОК · интерфейс: шторки, решения, цикл ===== */
 const closeBtn = () => '<button type="button" class="btn o" data-act="close">Закрыть</button>';
@@ -1740,6 +1911,7 @@ function miscSheet(loc) {
 }
 function staffSheet(id) {
   const s = staffBy(id); if (!s) return closeBtn();
+  if (s.role === 'pmu') return pmuSheet(s);
   let h = `<div class="eyebrow">${esc(ROLES[s.role])}</div><h2>${esc(s.short + ' · ' + s.name)}</h2><div class="who">${esc(staffState(s))} · бодрость ${Math.round(s.energy)}%</div><div class="row">`;
   if (s.taskId) h += `<button type="button" class="btn sm o" data-act="free" data-id="${s.id}">Снять с задачи</button>`;
   if (s.state === 'rest' || s.rest) h += `<button type="button" class="btn sm o" data-act="wake" data-id="${s.id}">Поднять</button>`;
@@ -1763,7 +1935,7 @@ function settingsSheet() {
   return `<div class="eyebrow">Правила и настройки</div><h2>Как играть</h2>${rulesHTML()}<label class="switch"><input type="checkbox" id="optAuto" data-act="toggle" data-k="auto"${S.auto ? ' checked' : ''}> Дежурные сами бегут на кнопки</label><label class="switch"><input type="checkbox" id="optPause" data-act="toggle" data-k="autoPause"${S.autoPause ? ' checked' : ''}> Пауза на красных вызовах и событиях</label><div class="row"><button type="button" class="btn o" data-act="restart">Сдать смену и начать новую</button>${closeBtn()}</div>`;
 }
 function rulesHTML() {
-  return `<div class="legend"><div><span class="lamps"><i class="lamp g on"></i></span> зелёная — плановый вызов акушера</div><div><span class="lamps"><i class="lamp y on"></i></span> жёлтая — вызов неонатолога</div><div><span class="lamps"><i class="lamp r on"></i></span> красная — экстренный вызов</div><div>Мигает — никто не идёт. Горит — врач в пути.</div><div>Тапни бокс — пациентка и кого послать. Тапни сотрудника — куда отправить или уложить спать.</div><div>Пост — кнопка клининга. Неубранный бокс занять нельзя, ВБИ растёт.</div><div>Ты — зав: решения в лотке внизу, а в крайнем случае идёшь к столу сам.</div></div>`;
+  return `<div class="legend"><div><span class="lamps"><i class="lamp g on"></i></span> зелёная — плановый вызов акушера</div><div><span class="lamps"><i class="lamp y on"></i></span> жёлтая — вызов неонатолога</div><div><span class="lamps"><i class="lamp r on"></i></span> красная — экстренный вызов</div><div>Мигает — никто не идёт. Горит — врач в пути.</div><div>Тапни бокс — пациентка и кого послать. Тапни сотрудника — куда отправить или уложить спать.</div><div>Пост — кнопка клининга. Неубранный бокс занять нельзя, ВБИ растёт.</div><div>Врачи ПМУ ведут своих контрактных — разгружают дежурных, но иногда чудят. Разрешить или запретить — решаешь ты.</div><div>Ты — зав: решения в лотке внизу, а в крайнем случае идёшь к столу сам.</div></div>`;
 }
 
 /* ---------- КТГ ---------- */
@@ -1805,7 +1977,7 @@ function openDecision(id) {
   const d = S.decisions.find(x => x.id === id); if (!d || d.done) return;
   const v = decisionView(d); if (!v) return;
   UI.modal = { kind: 'dec', id };
-  showModal(`<div class="card${v.red ? ' red' : ''}"><div class="eyebrow">${esc(v.where)}${v.red ? ' · красная кнопка' : ''} · ${clock(S.t)}</div><h2>${esc(v.title)}</h2><div class="who">${esc(v.who)}</div>${v.ctg ? ctgSVG(v.ctg, d.id) : ''}<p class="clue">${esc(v.clue)}</p><div class="opts">${v.options.map((o, i) => `<button type="button" class="opt" data-act="choose" data-id="${d.id}" data-i="${i}">${esc(o.label)}</button>`).join('')}</div><button type="button" class="btn o sm" data-act="later" data-id="${d.id}">Решу позже</button></div>`);
+  showModal(`<div class="card${v.red ? ' red' : v.pop ? ' gold' : ''}"><div class="eyebrow">${esc(v.where)}${v.red ? ' · красная кнопка' : v.pop ? ' · врач ПМУ' : ''} · ${clock(S.t)}</div><h2>${esc(v.title)}</h2><div class="who">${esc(v.who)}</div>${v.ctg ? ctgSVG(v.ctg, d.id) : ''}<p class="clue">${esc(v.clue)}</p>${v.fact ? `<p class="who">${esc(v.fact)}</p>` : ''}<div class="opts">${v.options.map((o, i) => `<button type="button" class="opt" data-act="choose" data-id="${d.id}" data-i="${i}">${esc(o.label)}</button>`).join('')}</div><button type="button" class="btn o sm" data-act="later" data-id="${d.id}">Решу позже</button></div>`);
 }
 function showFeedback(res) {
   const m = $('modal').querySelector('.card'); if (!m) return closeModal();
@@ -1821,7 +1993,7 @@ function openEvent(c) {
 }
 function nextModal(auto) {
   if (UI.modal) return true;
-  const red = S.decisions.find(d => !d.done && d.red && !UI.deferred[d.id]);
+  const red = S.decisions.find(d => !d.done && (d.red || d.pop) && !UI.deferred[d.id]);
   if (red) { openDecision(red.id); return true; }
   const ev = S.modals.find(m => !UI.shownModals[m.id]);
   if (ev) { if (ev.type === 'report') { UI.shownModals[ev.id] = true; openReport(); } else openEvent(ev); return true; }
@@ -1834,7 +2006,7 @@ function openReport() {
   const cell = (b, s) => `<div><b>${b}</b><span>${s}</span></div>`;
   const rev = S.review.filter(x => x.byZav && !x.ok).slice(-8);
   showModal(`<div class="card"><div class="eyebrow">Сдача смены · 08:00</div><p class="big">${Math.round(S.score)}</p><div class="stars" aria-label="${F.stars} из 3">${'★'.repeat(F.stars)}${'☆'.repeat(3 - F.stars)}</div><h2>${esc(F.title)}</h2>${best ? `<div class="who">Прошлый рекорд: ${best}</div>` : ''}
-  <div class="rep">${cell(st.births, 'родов')}${cell(Math.round(F.csRate * 100) + '%', 'доля КС')}${cell(st.vep, 'ВЭП')}${cell(st.csEm, 'экстренных КС')}${cell(st.csNeedless, 'КС без показаний')}${cell(st.pph, 'ПРК')}${cell(st.kas, 'КАС')}${cell(st.asph, 'асфиксий')}${cell(st.oritn, 'в ОРИТН')}${cell(st.chorio, 'хориоамнионитов')}${cell(Math.round(S.vbiPeak), 'пик ВБИ')}${cell(st.palata, 'родов вне бокса')}${cell(st.noDoc, 'родов без врача')}${cell(st.complaints, 'жалоб')}${cell(st.decOk + '/' + st.decAll, 'верных решений')}${cell((st.bossWon || 0) + '/' + (S.waves ? S.waves.length : 0), 'боссов повержено')}${cell(st.arrivals, 'поступило')}${cell(st.maxQueue, 'макс. очередь')}</div>
+  <div class="rep">${cell(st.births, 'родов')}${cell(Math.round(F.csRate * 100) + '%', 'доля КС')}${cell(st.vep, 'ВЭП')}${cell(st.csEm, 'экстренных КС')}${cell(st.csNeedless, 'КС без показаний')}${cell(st.pph, 'ПРК')}${cell(st.kas, 'КАС')}${cell(st.asph, 'асфиксий')}${cell(st.oritn, 'в ОРИТН')}${cell(st.chorio, 'хориоамнионитов')}${cell(Math.round(S.vbiPeak), 'пик ВБИ')}${cell(st.palata, 'родов вне бокса')}${cell(st.noDoc, 'родов без врача')}${cell(st.complaints, 'жалоб')}${cell(st.decOk + '/' + st.decAll, 'верных решений')}${cell((st.bossWon || 0) + '/' + (S.waves ? S.waves.length : 0), 'боссов повержено')}${cell(st.arrivals, 'поступило')}${cell(st.maxQueue, 'макс. очередь')}${cell(st.pmuBirths || 0, 'контрактных родов')}${cell(st.pmuStopped || 0, 'абсурда остановлено')}${cell(st.pmuMissed || 0, 'абсурда пропущено')}</div>
   ${F.bonus.length ? `<div class="who"><b>Бонусы:</b> ${esc(F.bonus.join(' · '))}</div>` : ''}
   ${rev.length ? `<h3>Разбор ошибок</h3><div class="revl">${rev.map(x => `<div><span class="bad-t">${clock(x.t)} ${esc(x.where)} · ${esc(x.title)}</span><br>Выбрано: ${esc(x.choice)}<br>Правильнее: ${esc(x.best || '')}<br>${esc(x.why)}</div>`).join('')}</div>` : '<div class="who">Ошибок в решениях нет.</div>'}
   <button type="button" class="btn" data-act="restart">Новая смена</button></div>`);
@@ -1856,7 +2028,7 @@ function frame(ts) {
     if (S.pauseReq) {
       S.pauseReq = false; acc = 0;
       const auto = S.autoPause || S.over;
-      if (auto && !UI.modal && (S.decisions.some(d => !d.done && d.red && !UI.deferred[d.id]) || S.modals.some(m => !UI.shownModals[m.id]))) { UI.prevSpeed = UI.speed; UI.autoPaused = true; setSpeed(0); nextModal(true); }
+      if (auto && !UI.modal && (S.decisions.some(d => !d.done && (d.red || d.pop) && !UI.deferred[d.id]) || S.modals.some(m => !UI.shownModals[m.id]))) { UI.prevSpeed = UI.speed; UI.autoPaused = true; setSpeed(0); nextModal(true); }
     }
   }
   if (!UI.modal && UI.started && (S.over || UI.speed === 0 || !S.autoPause)) {
@@ -1892,6 +2064,7 @@ document.addEventListener('click', e => {
     case 'rest': sendRest(id); refreshSheet(true); break;
     case 'wake': wake(id); refreshSheet(true); break;
     case 'free': release(id); refreshSheet(true); break;
+    case 'pmuoff': pmuDismiss(id); refreshSheet(true); break;
     case 'clean': callCleaning([el.dataset.loc]); refreshSheet(true); break;
     case 'cleanall': { const n = callCleaning(dirtyRooms()); note(n ? 'Клининг вызван: ' + n : 'Всё уже в очереди', 'good'); refreshSheet(true); break; }
     case 'dec': closeSheet(); if (!UI.modal) openDecision(+id); break;
@@ -1916,7 +2089,7 @@ window.addEventListener('resize', () => { UI.tokPos = {}; placeTokens(true); });
 
 /* ---------- запуск ---------- */
 function boot(data) {
-  if (data && data.S && data.S.v === 1) { S = data.S; SEED = S.rng; UI.started = !!data.started; }
+  if (data && data.S && data.S.v === 2) { S = data.S; SEED = S.rng; UI.started = !!data.started; }
   else newGame();
   buildBoard(); render(); placeTokens(true);
   if (!UI.started) showStart(); else setSpeed(0);

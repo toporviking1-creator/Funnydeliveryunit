@@ -232,3 +232,9 @@ h3 { font-size: 15px; margin: 0; }
 .boss.warn { background: var(--lamp-y); color: #1A1200; animation: pulse 1.4s ease-in-out infinite; }
 .qd.opb { background: var(--violet); border-color: var(--violet); }
 @media (prefers-reduced-motion: reduce) { .boss.warn { animation: none; } }
+.tok.pmu { background: var(--paper); color: var(--ink); border: 2.5px solid var(--gold); }
+.dot.pmu { background: var(--paper); border-color: var(--gold); }
+.tag.g { color: var(--warn); }
+.card.gold { border-color: var(--gold); box-shadow: 0 0 0 4px color-mix(in srgb, var(--gold) 35%, transparent); }
+.card.gold .eyebrow { color: var(--warn); }
+.pill.pm { border-color: var(--gold); color: var(--gold); }

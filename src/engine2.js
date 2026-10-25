@@ -19,6 +19,7 @@ function makePatient(kind, noQueue) {
   initLab(p);
   S.P[p.id] = p;
   if (!noQueue) { S.queue.push(p.id); S.st.arrivals++; }
+  assignPMU(p);
   return p;
 }
 function initLab(p) {
@@ -91,7 +92,7 @@ function mwDelay(z) {
 function zoneLoad(z) { let n = 0; for (const id of BOX_IDS) if (zoneOf(id) === z && S.rooms[id].pid) n++; return n; }
 function complaint(p, reason) {
   S.st.complaints++;
-  const pen = p && p.flags.blogger ? 30 : 15;
+  const pen = p && p.flags.blogger ? 30 : p && p.flags.contract ? 25 : 15;
   addScore(-pen, 'Жалоба: ' + reason);
   if (p) p.flags.complained = true;
   note('Жалоба: ' + reason + (p && p.flags.blogger ? ' — и пост в соцсетях' : ''), 'bad');
@@ -140,16 +141,19 @@ function deliver(p) {
   cancelTasks(p, ['vep', 'ctg', 'epid', 'cs', 'chorio', 'mg']);
   if (p.want === 'or') p.want = null;
   const tk = p.birthTask ? task(p.birthTask) : null;
-  p.obstAt = present(tk, ['obst', 'zav']);
+  p.obstAt = present(tk, ['obst', 'zav', 'pmu']);
   p.neoAt = present(tk, ['neo', 'reanim']);
   const where = p.loc || 'priem';
-  if (!isBox(where) && !isOR(where) && !p.flags.lift) {
+  const shop = p.shopUntil && S.t < p.shopUntil;
+  if (shop) { p.obstAt = false; p.neoAt = false; S.st.palata++; p.flags.outside = true; addScore(-20, 'Роды по дороге из магазина'); note(p.name + ' родила в такси по дороге из магазина!', 'bad'); complaint(p, 'в родах отпустили в магазин'); }
+  else if (!isBox(where) && !isOR(where) && !p.flags.lift) {
     S.st.palata++; p.flags.outside = true; addScore(-20, 'Роды вне бокса');
     note('Роды прямо здесь: ' + locName(where) + '!', 'bad');
     if (S.rooms[where]) S.rooms[where].dirtyAfter = true;
   }
   if (!p.obstAt) { S.st.noDoc++; addScore(-6, 'Роды без врача'); note(locName(where) + ': роды приняла акушерка, врача не было', 'warn'); }
-  if (chance(0.012 + (p.big ? 0.06 : 0))) { startDyst(p); return; }
+  if (p.flags.kristeller) addScore(-10, 'Приём Кристеллера');
+  if (chance(0.012 + (p.big ? 0.06 : 0) + (p.flags.kristeller ? 0.05 : 0))) { startDyst(p); return; }
   born(p, 'vag');
 }
 function born(p, mode) {
@@ -164,6 +168,7 @@ function born(p, mode) {
   note(locName(p.loc || 'priem') + ': ' + (p.girl ? 'девочка' : 'мальчик') + ' ' + p.weight + ' г, Апгар ' + a + '/' + Math.min(10, a + (a < 7 ? 2 : 1)), a >= 7 ? 'good' : 'bad');
   if (a < 7) startResus(p);
   else if (p.ga <= 34 || (p.flags.chorio && !p.flags.abx)) transferBaby(p);
+  if (p.flags.contract) { S.st.pmuBirths++; if (a >= 7 && !p.flags.complained) addScore(8, 'Довольная контрактная пациентка'); }
   if (p.flags.blogger && a >= 7 && !p.flags.complained) { addScore(25, 'Сторис блогерши'); note('Блогерша выложила сторис «лучший роддом Москвы»', 'good'); }
   if (mode !== 'cs') {
     p.phase = 'pp'; p.ppEnd = S.t + 120; pphRoll(p);
@@ -182,6 +187,7 @@ function apgar(p) {
   if (p.flags.dystBad) a -= 4;
   if (p.flags.abrupt) a -= p.abruptLate ? 4 : 2;
   if (p.flags.ecl && !p.eclOk) a -= 2;
+  if (p.flags.kristeller) a -= 1;
   return Math.max(1, Math.min(9, a));
 }
 function startResus(p) {
@@ -227,11 +233,12 @@ FAIL.pph = tk => { const p = pat(tk.pid); if (p) p.pphOk = false; tk.startT = nu
 
 /* ---------- КТГ и экстренные ---------- */
 function ctgTick(p) {
-  if (p.em || p.bornT != null) return;
+  if (p.em || p.bornT != null || (p.shopUntil && S.t < p.shopUntil)) return;
   if (p.ctgFixAt && S.t >= p.ctgFixAt) { p.ctgFixAt = null; if (p.ctg === 'S' && chance(0.8)) { p.ctg = 'N'; p.ctgCare = false; note(locName(p.loc) + ': КТГ нормализовалась', 'good'); } }
   let hz = 0.00008;
   if (p.flags.epid && S.t - p.epidAt < 25) hz += 0.0012;
   if (p.flags.oxy) hz += 0.00025;
+  if (p.flags.oxyMax) hz += 0.0012;
   if (p.ctg === 'P') hz += 0.0025;
   if (chance(hz)) { startBrady(p); return; }
   if (p.ctg === 'N' && chance(0.0011)) { p.ctg = 'S'; p.ctgT = S.t; callCTG(p); }
@@ -239,7 +246,7 @@ function ctgTick(p) {
 }
 function hasOpen(p, type) { return p.tasks.some(id => { const t = task(id); return t && !t.done && t.type === type; }); }
 function callCTG(p) {
-  if (hasOpen(p, 'ctg')) return;
+  if (hasOpen(p, 'ctg') || p.flags.noCtg) return;
   addTask({ type: 'ctg', loc: p.loc, pid: p.id, label: 'Посмотреть КТГ', need: { obst: 1 }, dur: 5, pri: p.ctg === 'P' ? 2 : 1, lamps: ['g'], callAt: S.t + mwDelay(zoneOf(p.loc)) });
 }
 HANDLERS.ctg = tk => { const p = pat(tk.pid); if (!p || p.bornT != null || p.em) return; if (p.ctg === 'S' || p.ctg === 'P') addDecision({ kind: p.ctg === 'S' ? 'ctgS' : 'ctgP', pid: p.id }); };

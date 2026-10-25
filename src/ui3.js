@@ -13,3 +13,9 @@ function renderBoss() {
     setHTML(el, `<b>СКОРО</b><span class="bn">${esc(D.name)} · ${warn.size}</span><span class="bt">через ${Math.max(0, warn.t - S.t)} мин</span>`);
   } else el.hidden = true;
 }
+function pmuSheet(s) {
+  const mine = pmuPatients(s.id);
+  let h = `<div class="eyebrow">Врач ПМУ · ${esc(s.title)}</div><h2>${esc(s.name)}</h2><div class="who">${esc(s.quirk)} · ${esc(staffState(s))}</div>`;
+  h += mine.length ? `<div class="who">Ведёт: ${mine.map(p => esc(p.name) + ' (' + esc(shortLoc(p.loc || 'priem')) + ')').join(', ')}</div><button type="button" class="btn o" data-act="pmuoff" data-id="${s.id}">Забрать ${he(s, 'его', 'её')} пациенток дежурным</button>` : '<p class="who">Своих пациенток сейчас нет.</p>';
+  return h + closeBtn();
+}
