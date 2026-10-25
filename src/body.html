@@ -1,0 +1,49 @@
+<div id="app">
+  <header class="hud"><div class="hud-in">
+    <div class="hud-row">
+      <div class="clock"><span id="clk">08:00</span><small id="clkSub">сутки начались</small></div>
+      <div class="speed" role="group" aria-label="Скорость игры">
+        <button type="button" id="sp0" data-act="speed" data-v="0" aria-label="Пауза">II</button>
+        <button type="button" id="sp1" data-act="speed" data-v="1">×1</button>
+        <button type="button" id="sp2" data-act="speed" data-v="2">×2</button>
+        <button type="button" id="sp4" data-act="speed" data-v="4">×4</button>
+      </div>
+      <button type="button" class="gear" data-act="settings" aria-label="Правила и настройки">?</button>
+    </div>
+    <div class="hud-row stats">
+      <div class="stat"><b id="hScore">0</b><span>очки</span></div>
+      <div class="stat"><b id="hBirths">0</b><span>родов</span></div>
+      <div class="stat"><b id="hCs">0%</b><span>КС</span></div>
+      <div class="stat vbi"><span>ВБИ</span><div class="meter"><i id="hVbiBar"></i></div><b id="hVbi">6</b></div>
+    </div>
+    <div class="boss" id="boss" hidden></div>
+  </div></header>
+  <main class="board" id="board">
+    <section class="wing w-priem">
+      <div class="room" id="r-orP" data-act="room" data-loc="orP"></div>
+      <div class="room" id="r-priem" data-act="room" data-loc="priem"></div>
+    </section>
+    <div class="lift">лифт · 5 минут бегом</div>
+    <section class="wing w-rd">
+      <div class="room static"><div class="lbl"><span>Распред</span></div><div class="beds b2" id="beds-raspred"></div></div>
+      <div class="room static"><div class="lbl"><span>Доп палата</span></div><div class="beds b6" id="beds-dop"></div></div>
+    </section>
+    <div class="zones" id="zones"></div>
+    <section class="boxes" id="boxes"></section>
+    <section class="wing w-bottom">
+      <div class="room" id="r-or1" data-act="room" data-loc="or1"></div>
+      <div class="room" id="r-or2" data-act="room" data-loc="or2"></div>
+      <div class="room" id="r-oritn" data-act="room" data-loc="oritn"></div>
+      <div class="room" id="r-ord" data-act="room" data-loc="ord"></div>
+    </section>
+    <div class="tokens" id="tokens"></div>
+  </main>
+  <footer class="dock"><div class="dock-in">
+    <button type="button" class="ticker" id="ticker" data-act="log" aria-label="Журнал смены"></button>
+    <div class="tray" id="tray"></div>
+    <div class="staffbar" id="staffbar"></div>
+  </div></footer>
+</div>
+<div class="scrim" id="scrim" hidden data-act="close"></div>
+<section class="sheet" id="sheet" hidden role="dialog" aria-modal="true" aria-label="Подробности"></section>
+<div class="modal" id="modal" hidden role="dialog" aria-modal="true" aria-label="Решение"></div>
