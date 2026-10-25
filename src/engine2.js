@@ -97,6 +97,7 @@ function complaint(p, reason) {
   addScore(-pen, 'Жалоба: ' + reason);
   if (p) p.flags.complained = true;
   if (p && p.vip) vipHit(p, 'жалоба пациентки');
+  blame(12, 'жалоба');
   note('Жалоба: ' + reason + (p && p.flags.blogger ? ' — и пост в соцсетях' : ''), 'bad');
 }
 
@@ -149,7 +150,7 @@ function deliver(p) {
   const shop = p.shopUntil && S.t < p.shopUntil;
   if (shop) { p.obstAt = false; p.neoAt = false; S.st.palata++; p.flags.outside = true; addScore(-20, 'Роды по дороге из магазина'); note(p.name + ' родила в такси по дороге из магазина!', 'bad'); complaint(p, 'в родах отпустили в магазин'); }
   else if (!isBox(where) && !isOR(where) && !p.flags.lift) {
-    S.st.palata++; p.flags.outside = true; addScore(-20, 'Роды вне бокса'); vipHit(p, 'роды вне бокса');
+    S.st.palata++; p.flags.outside = true; addScore(-20, 'Роды вне бокса'); vipHit(p, 'роды вне бокса'); blame(8, 'роды вне бокса');
     note('Роды прямо здесь: ' + locName(where) + '!', 'bad');
     if (S.rooms[where]) S.rooms[where].dirtyAfter = true;
   }
@@ -195,7 +196,7 @@ function apgar(p) {
 function startResus(p) {
   addTask({ type: 'resus', loc: p.loc || 'priem', pid: p.id, label: 'Реанимация новорождённого', need: { reanim: 1 }, dur: 10, pri: 3, lamps: ['r'], deadline: S.t + 3, failAt: S.t + 12 });
 }
-LATE.resus = tk => { const p = pat(tk.pid); if (p && !p.flags.asph) { p.flags.asph = true; S.st.asph++; addScore(-40, 'Асфиксия: реаниматолог опоздал'); vipHit(p, 'асфиксия новорождённого'); note('Реаниматолог не успел — асфиксия новорождённого!', 'bad'); } };
+LATE.resus = tk => { const p = pat(tk.pid); if (p && !p.flags.asph) { p.flags.asph = true; S.st.asph++; addScore(-40, 'Асфиксия: реаниматолог опоздал'); vipHit(p, 'асфиксия новорождённого'); blame(25, 'асфиксия'); note('Реаниматолог не успел — асфиксия новорождённого!', 'bad'); } };
 FAIL.resus = tk => { closeTask(tk); const p = pat(tk.pid); if (p) transferBaby(p); };
 HANDLERS.resus = tk => { const p = pat(tk.pid); if (p) transferBaby(p); };
 function transferBaby(p) { S.st.oritn++; addTask({ type: 'transfer', loc: 'oritn', pid: p.id, label: 'Малыш в ОРИТН', need: { reanim: 1 }, dur: 6, pri: 2, failAt: S.t + 90 }); }
@@ -228,7 +229,7 @@ HANDLERS.pph = tk => {
   if (p.pphOk == null) { p.pphOk = p.pph === 'tone'; closeDecisionFor(p.id, 'pph'); }
   const inTime = tk.startT != null && tk.startT <= tk.deadline;
   if (p.pphOk && inTime) note(locName(p.loc) + ': кровотечение остановлено, ~900 мл', 'good');
-  else { S.st.kas++; addScore(-35, 'КАС: массивная кровопотеря'); vipHit(p, 'КАС'); note(locName(p.loc) + ': кровопотеря 1800 мл — КАС, перевод в ОРИТ', 'bad'); }
+  else { S.st.kas++; addScore(-35, 'КАС: массивная кровопотеря'); vipHit(p, 'КАС'); blame(25, 'КАС'); note(locName(p.loc) + ': кровопотеря 1800 мл — КАС, перевод в ОРИТ', 'bad'); }
   p.pphActive = false; p.pphDone = true;
 };
 FAIL.pph = tk => { const p = pat(tk.pid); if (p) p.pphOk = false; tk.startT = null; finish(tk); };
@@ -301,7 +302,7 @@ HANDLERS.ecl = tk => {
   const p = pat(tk.pid); if (!p) return;
   if (p.eclOk == null) { p.eclOk = chance(0.6); closeDecisionFor(p.id, 'ecl'); }
   if (p.eclOk) note(locName(p.loc) + ': эклампсия купирована, состояние стабилизировано', 'good');
-  else { S.st.kas++; addScore(-30, 'КАС: эклампсия'); vipHit(p, 'КАС'); note(locName(p.loc) + ': КАС — эклампсия без стабилизации', 'bad'); }
+  else { S.st.kas++; addScore(-30, 'КАС: эклампсия'); vipHit(p, 'КАС'); blame(25, 'КАС'); note(locName(p.loc) + ': КАС — эклампсия без стабилизации', 'bad'); }
   p.flags.mg = true; p.em = null; p.flags.eclNow = false;
 };
 FAIL.ecl = tk => { const p = pat(tk.pid); if (p) p.eclOk = false; finish(tk); };

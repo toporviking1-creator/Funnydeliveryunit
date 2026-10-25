@@ -143,6 +143,7 @@ function renderHUD() {
 function staffState(s) {
   if (s.role === 'pmu' && s.out) return 'не в отделении';
   if (s.role === 'pmu' && s.state === 'away') return 'едет, ещё ' + Math.max(1, s.awayUntil - S.t) + ' мин';
+  if (s.role === 'zav' && s.state === 'away') return (S.zavOut === 'meeting' ? 'на планёрке' : 'на ковре у главврача') + ', ещё ' + Math.max(1, s.awayUntil - S.t) + ' мин';
   if (s.state === 'away') return 'в общей реанимации';
   if (s.state === 'rest') return 'спит в ординаторской';
   const tk = s.taskId && task(s.taskId);
@@ -151,7 +152,7 @@ function staffState(s) {
   return he(s, 'свободен', 'свободна') + (s.loc === 'ord' ? ', ординат.' : '');
 }
 function renderStaff() {
-  setHTML($('staffbar'), S.staff.filter(s => !s.out).map(s => `<button type="button" class="chip${s.role === 'zav' ? ' zav' : ''}" data-act="staff" data-id="${s.id}"><span class="cn"><i class="dot ${s.role}"></i>${s.role === 'zav' ? 'Зав · ты' : s.role === 'pmu' ? 'ПМУ · ' + esc(s.name) : s.short + ' ' + esc(s.name)}</span><span class="cs">${esc(staffState(s))}</span><span class="en"><i style="width:${Math.round(s.energy)}%;background:${s.energy < 30 ? 'var(--lamp-r)' : s.energy < 55 ? 'var(--lamp-y)' : 'var(--lamp-g)'}"></i></span></button>`).join(''));
+  setHTML($('staffbar'), S.staff.filter(s => !s.out).map(s => `<button type="button" class="chip${s.role === 'zav' ? ' zav' + ((S.atata || 0) >= 70 ? ' angry' : '') : ''}" data-act="staff" data-id="${s.id}"><span class="cn"><i class="dot ${s.role}"></i>${s.role === 'zav' ? 'Зав · ты' : s.role === 'pmu' ? 'ПМУ · ' + esc(s.name) : s.short + ' ' + esc(s.name)}</span><span class="cs">${esc(staffState(s) + (s.role === 'zav' ? ' · гнев ' + Math.round(S.atata || 0) : ''))}</span><span class="en"><i style="width:${Math.round(s.energy)}%;background:${s.energy < 30 ? 'var(--lamp-r)' : s.energy < 55 ? 'var(--lamp-y)' : 'var(--lamp-g)'}"></i></span></button>`).join(''));
 }
 function renderTray() {
   const pend = S.decisions.filter(d => !d.done).sort((a, b) => (b.red ? 1 : 0) - (a.red ? 1 : 0) || a.t - b.t);

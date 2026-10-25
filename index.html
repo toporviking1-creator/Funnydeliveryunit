@@ -255,6 +255,7 @@ h3 { font-size: 15px; margin: 0; }
 .pill.pm { border-color: var(--gold); color: var(--gold); }
 .tag.vip { background: var(--gold); border-color: var(--gold); color: #1A1200; }
 .qd.vip { background: var(--gold); border-color: var(--gold); }
+.chip.zav.angry { border-color: var(--lamp-r); }
 </style>
 </head>
 <body>
@@ -521,19 +522,20 @@ function he(s, m, f) { return s.f ? f : m; }
 function newGame(seed) {
   SEED = seed || Math.floor(Math.random() * 1e9) + 1;
   S = {
-    v: 2, t: 0, uid: 0, rng: SEED, over: false, auto: true, autoPause: true,
+    v: 3, t: 0, uid: 0, rng: SEED, over: false, auto: true, autoPause: true,
     P: {}, T: {}, staff: [], decisions: [], notes: [], log: [], scoreLog: [], review: [], modals: [], later: [],
     rooms: {}, queue: [], planned: [], nextBlogger: false,
-    score: 0, vbi: 6, vbiPeak: 6, pauseReq: false,
+    score: 0, vbi: 6, vbiPeak: 6, pauseReq: false, atata: 0, atataPeak: 0, blameLog: [], summon: null, zavOut: null,
     mod: { arrival: 1, arrivalUntil: 0, rest: 1, restUntil: 0 },
     slow: {}, ev: { next: rint(45, 80), used: {} }, dzm: null,
-    st: { arrivals: 0, births: 0, vag: 0, vep: 0, cs: 0, csEm: 0, csNeedless: 0, pph: 0, kas: 0, asph: 0, oritn: 0, chorio: 0, palata: 0, complaints: 0, noDoc: 0, dyst: 0, decOk: 0, decAll: 0, maxQueue: 0, dirtyUse: 0, cleaned: 0, pmuBirths: 0, pmuStopped: 0, pmuMissed: 0, vipTotal: 0, vipOk: 0, vipBad: 0 },
+    st: { arrivals: 0, births: 0, vag: 0, vep: 0, cs: 0, csEm: 0, csNeedless: 0, pph: 0, kas: 0, asph: 0, oritn: 0, chorio: 0, palata: 0, complaints: 0, noDoc: 0, dyst: 0, decOk: 0, decAll: 0, maxQueue: 0, dirtyUse: 0, cleaned: 0, pmuBirths: 0, pmuStopped: 0, pmuMissed: 0, vipTotal: 0, vipOk: 0, vipBad: 0, atata: 0, atataMin: 0 },
   };
   for (const id of BED_IDS) S.rooms[id] = { id, pid: null, dirty: false, cleanTask: null, dirtyAfter: false };
   for (const r of ROSTER) S.staff.push({ id: r.id, role: r.role, name: r.name, short: r.short, f: r.f || 0, energy: rint(80, 100), loc: r.start, dest: null, eta: 0, depart: 0, state: 'idle', taskId: null, slot: null, rest: false, forced: false, awayUntil: 0 });
   for (const d of PMU_DOCS) S.staff.push({ id: d.id, role: 'pmu', name: d.name, short: d.short, f: d.f || 0, title: d.title, quirk: d.quirk, absurd: d.absurd, delay: d.delay, energy: 100, loc: 'priem', dest: null, eta: 0, depart: 0, state: 'away', taskId: null, slot: null, rest: false, forced: false, awayUntil: 1e9, out: true });
   handover();
   setupWaves();
+  S.later.push({ t: 55, k: 'meetCard' });
   S.rng = SEED;
   return S;
 }
@@ -674,7 +676,7 @@ function release(id) { const s = staffBy(id); if (s && s.taskId) unassign(s); }
 function staffTick() {
   const night = isNight();
   for (const s of S.staff) {
-    if (s.state === 'away') { if (S.t >= s.awayUntil) { s.state = 'idle'; note(s.role === 'pmu' ? 'Врач ПМУ ' + s.name + ' ' + he(s, 'приехал', 'приехала') : s.name + ' ' + he(s, 'вернулся', 'вернулась') + ' в родблок'); } continue; }
+    if (s.state === 'away') { if (S.t >= s.awayUntil) { s.state = 'idle'; note(s.role === 'pmu' ? 'Врач ПМУ ' + s.name + ' ' + he(s, 'приехал', 'приехала') : s.name + ' ' + he(s, 'вернулся', 'вернулась') + ' в родблок'); if (s.id === 'zav') zavReturned(); } continue; }
     if (s.state === 'walk' && S.t >= s.eta) {
       s.loc = s.dest; s.dest = null;
       s.state = s.taskId ? 'work' : (s.rest && s.loc === 'ord') ? 'rest' : 'idle';
@@ -748,6 +750,7 @@ function tick() {
   eventsTick();
   wavesTick();
   pmuTick();
+  atataTick();
   if (S.t >= SHIFT) endShift();
   S.rng = SEED;
 }
@@ -857,6 +860,7 @@ function complaint(p, reason) {
   addScore(-pen, 'Жалоба: ' + reason);
   if (p) p.flags.complained = true;
   if (p && p.vip) vipHit(p, 'жалоба пациентки');
+  blame(12, 'жалоба');
   note('Жалоба: ' + reason + (p && p.flags.blogger ? ' — и пост в соцсетях' : ''), 'bad');
 }
 
@@ -909,7 +913,7 @@ function deliver(p) {
   const shop = p.shopUntil && S.t < p.shopUntil;
   if (shop) { p.obstAt = false; p.neoAt = false; S.st.palata++; p.flags.outside = true; addScore(-20, 'Роды по дороге из магазина'); note(p.name + ' родила в такси по дороге из магазина!', 'bad'); complaint(p, 'в родах отпустили в магазин'); }
   else if (!isBox(where) && !isOR(where) && !p.flags.lift) {
-    S.st.palata++; p.flags.outside = true; addScore(-20, 'Роды вне бокса'); vipHit(p, 'роды вне бокса');
+    S.st.palata++; p.flags.outside = true; addScore(-20, 'Роды вне бокса'); vipHit(p, 'роды вне бокса'); blame(8, 'роды вне бокса');
     note('Роды прямо здесь: ' + locName(where) + '!', 'bad');
     if (S.rooms[where]) S.rooms[where].dirtyAfter = true;
   }
@@ -955,7 +959,7 @@ function apgar(p) {
 function startResus(p) {
   addTask({ type: 'resus', loc: p.loc || 'priem', pid: p.id, label: 'Реанимация новорождённого', need: { reanim: 1 }, dur: 10, pri: 3, lamps: ['r'], deadline: S.t + 3, failAt: S.t + 12 });
 }
-LATE.resus = tk => { const p = pat(tk.pid); if (p && !p.flags.asph) { p.flags.asph = true; S.st.asph++; addScore(-40, 'Асфиксия: реаниматолог опоздал'); vipHit(p, 'асфиксия новорождённого'); note('Реаниматолог не успел — асфиксия новорождённого!', 'bad'); } };
+LATE.resus = tk => { const p = pat(tk.pid); if (p && !p.flags.asph) { p.flags.asph = true; S.st.asph++; addScore(-40, 'Асфиксия: реаниматолог опоздал'); vipHit(p, 'асфиксия новорождённого'); blame(25, 'асфиксия'); note('Реаниматолог не успел — асфиксия новорождённого!', 'bad'); } };
 FAIL.resus = tk => { closeTask(tk); const p = pat(tk.pid); if (p) transferBaby(p); };
 HANDLERS.resus = tk => { const p = pat(tk.pid); if (p) transferBaby(p); };
 function transferBaby(p) { S.st.oritn++; addTask({ type: 'transfer', loc: 'oritn', pid: p.id, label: 'Малыш в ОРИТН', need: { reanim: 1 }, dur: 6, pri: 2, failAt: S.t + 90 }); }
@@ -988,7 +992,7 @@ HANDLERS.pph = tk => {
   if (p.pphOk == null) { p.pphOk = p.pph === 'tone'; closeDecisionFor(p.id, 'pph'); }
   const inTime = tk.startT != null && tk.startT <= tk.deadline;
   if (p.pphOk && inTime) note(locName(p.loc) + ': кровотечение остановлено, ~900 мл', 'good');
-  else { S.st.kas++; addScore(-35, 'КАС: массивная кровопотеря'); vipHit(p, 'КАС'); note(locName(p.loc) + ': кровопотеря 1800 мл — КАС, перевод в ОРИТ', 'bad'); }
+  else { S.st.kas++; addScore(-35, 'КАС: массивная кровопотеря'); vipHit(p, 'КАС'); blame(25, 'КАС'); note(locName(p.loc) + ': кровопотеря 1800 мл — КАС, перевод в ОРИТ', 'bad'); }
   p.pphActive = false; p.pphDone = true;
 };
 FAIL.pph = tk => { const p = pat(tk.pid); if (p) p.pphOk = false; tk.startT = null; finish(tk); };
@@ -1061,7 +1065,7 @@ HANDLERS.ecl = tk => {
   const p = pat(tk.pid); if (!p) return;
   if (p.eclOk == null) { p.eclOk = chance(0.6); closeDecisionFor(p.id, 'ecl'); }
   if (p.eclOk) note(locName(p.loc) + ': эклампсия купирована, состояние стабилизировано', 'good');
-  else { S.st.kas++; addScore(-30, 'КАС: эклампсия'); vipHit(p, 'КАС'); note(locName(p.loc) + ': КАС — эклампсия без стабилизации', 'bad'); }
+  else { S.st.kas++; addScore(-30, 'КАС: эклампсия'); vipHit(p, 'КАС'); blame(25, 'КАС'); note(locName(p.loc) + ': КАС — эклампсия без стабилизации', 'bad'); }
   p.flags.mg = true; p.em = null; p.flags.eclNow = false;
 };
 FAIL.ecl = tk => { const p = pat(tk.pid); if (p) p.eclOk = false; finish(tk); };
@@ -1150,7 +1154,7 @@ HANDLERS.cs = tk => {
   p.extractT = (tk.startT != null ? tk.startT : S.t) + 8;
   if (p.flags.abrupt) p.abruptLate = p.extractT - p.arrived > 30;
   if (p.csPri >= 3) S.st.csEm++;
-  if (p.flags.needlessCS) { S.st.csNeedless++; addScore(-10, 'КС без показаний'); }
+  if (p.flags.needlessCS) { S.st.csNeedless++; addScore(-10, 'КС без показаний'); blame(6, 'КС без показаний'); }
   born(p, 'cs');
   cancelTasks(p, ['birth']);
   vacate(p, true); p.phase = 'gone';
@@ -1249,6 +1253,7 @@ LATER.opbBad = e => {
   const p = pat(e.pid); if (!p) return;
   const serious = ['previa', 'pe'].includes(p.kind);
   if (serious) S.st.kas++;
+  blame(serious ? 25 : 10, serious ? 'КАС в ОПБ' : 'роды в ОПБ');
   addScore(serious ? -35 : -25, 'Отправлена в ОПБ не по делу');
   note(p.name + ' в ОПБ: ' + (p.kind === 'previa' ? 'кровотечение, КАС' : p.kind === 'pe' ? 'эклампсия, КАС' : 'родила в палате ОПБ') + ' — разбор у главврача', 'bad');
 };
@@ -1345,6 +1350,8 @@ function eventChoice(id, idx) {
   if (!c) return;
   c.chosen = idx;
   if (c.k === 'vipcall') vipCallChoice(c, idx);
+  if (c.k === 'atata') atataChoice(idx);
+  if (c.k === 'meeting') meetingChoice(idx);
   if (c.k === 'mil') {
     if (idx === 0) addTask({ type: 'mil', loc: 'priem', label: 'Поговорить со свекровью', need: { zav: 1 }, dur: 15, pri: 1, deadline: S.t + 30, failAt: S.t + 90 });
     else if (chance(0.5)) complaint(null, 'свекровь написала в ДЗМ');
@@ -1365,6 +1372,7 @@ function dzmEval(withZav) {
   const dirty = dirtyRooms().length, q = S.queue.length;
   const pts = (withZav ? 15 : 0) + 25 - dirty * 7 - q * 6;
   addScore(pts, 'Итог проверки ДЗМ');
+  if (pts < 0) blame(20, 'предписание ДЗМ');
   note('Комиссия ДЗМ: грязных помещений ' + dirty + ', в очереди ' + q + ' — ' + (pts >= 0 ? 'уехали довольные' : 'будет предписание'), pts >= 0 ? 'good' : 'bad');
 }
 
@@ -1453,6 +1461,7 @@ function winWave(w, D) {
 function loseWave(w, D) {
   w.state = 'lost'; S.st.bossLost++;
   addScore(-30, 'Босс победил: ' + D.name);
+  blame(20, 'провален наплыв');
   complaint(null, D.k === 'opb' ? 'заведующая ОПБ написала главврачу' : 'пациентки часами ждали места');
   card('Босс победил', D.name + ': за ' + D.limit + ' минут не разместили ещё ' + w.left + '. −30 и жалоба.', null, 'bosslose');
 }
@@ -1621,7 +1630,7 @@ function assignVIP(p) {
 function vipHit(p, why) {
   if (!p || !p.vip) return;
   addScore(-10 * p.vip, 'Руководство: ' + why);
-  p.flags.vipBad = true; S.st.vipBad++;
+  p.flags.vipBad = true; S.st.vipBad++; blame(8 * p.vip, 'звонок сверху');
   note(VIP_WHO[p.vip] + ' звонит заву: ' + why + ' у «нашей девочки»', 'bad');
 }
 function vipResolve(p) {
@@ -1672,6 +1681,65 @@ APPLY.vipcs = (d, k) => {
   manualAssign('zav', tk.id);
 };
 HANDLERS.konsilium = () => { addScore(10, 'Консилиум по VIP'); note('Консилиум: показаний к КС нет, ведём роды. В ДЗМ довольны протоколом', 'good'); };
+/* ===== РОДБЛОК · атата у руководства ===== */
+const ATATA_TALKS = [
+  'Главврач полчаса читал вслух жалобу и спрашивал: «Как такое возможно?»',
+  'Устный выговор: «Чтобы больше такого не было».',
+  'Объяснительная в трёх экземплярах, один — в ДЗМ.',
+  'Главврач показал график доли КС и долго молчал.',
+  '«Вы заведующий или кто?» — прозвучало четыре раза.',
+];
+function blame(pts, reason) {
+  if (!S) return;
+  S.atata = Math.min(150, (S.atata || 0) + pts);
+  S.atataPeak = Math.max(S.atataPeak || 0, S.atata);
+  S.blameLog.push({ t: S.t, reason, pts });
+  if (S.blameLog.length > 30) S.blameLog.shift();
+}
+function zavAway(min, kind) {
+  const z = staffBy('zav');
+  if (z.taskId) unassign(z);
+  z.state = 'away'; z.awayUntil = S.t + min; z.rest = false; z.forced = false; z.dest = null; z.loc = 'priem';
+  S.zavOut = kind;
+  if (kind === 'atata') S.st.atataMin += min;
+}
+function zavReturned() {
+  const kind = S.zavOut; S.zavOut = null;
+  if (kind === 'atata') {
+    const pen = (S.summon && S.summon.pen) || 15;
+    addScore(-pen, 'Атата у главврача');
+    card('Атата окончено', pick(ATATA_TALKS) + ' Минус ' + pen + ' очков, гнев остыл до 30.', null, 'atataend');
+    S.atata = 30; S.summon = null;
+  } else if (kind === 'meeting') {
+    addScore(5, 'Планёрка');
+    note('Зав вернулся с планёрки: «Снижаем долю КС, коллеги»', 'good');
+  }
+}
+function atataTick() {
+  if (S.atata > 0) S.atata = Math.max(0, S.atata - 0.02);
+  const z = staffBy('zav');
+  if (S.atata >= 100 && !S.summon && z.state !== 'away' && S.t < SHIFT - 30) {
+    S.st.atata++;
+    const rs = [];
+    for (let i = S.blameLog.length - 1; i >= 0 && rs.length < 3; i--) { const r = S.blameLog[i].reason; if (!rs.includes(r)) rs.push(r); }
+    S.summon = { t: S.t, pen: 15 };
+    card('Зава вызывают на ковёр', 'Главврач ждёт у себя. Накопилось: ' + rs.join(', ') + '. Это 25–45 минут вне родблока.', ['Идти сразу', 'Сначала закончить дела — через 15 минут', 'Отправить старшую акушерку'], 'atata');
+  }
+}
+function atataChoice(idx) {
+  if (!S.summon) return;
+  if (idx === 0) { S.summon.pen = 15; zavAway(rint(25, 45), 'atata'); note('Зав ушёл на ковёр к главврачу', 'warn'); }
+  else if (idx === 1) { S.summon.pen = 25; S.later.push({ t: S.t + 15, k: 'atataGo' }); note('«Через 15 минут буду» — главврач засёк время', 'warn'); }
+  else if (chance(0.5)) { addScore(-5, 'Старшая акушерка на ковре'); note('Главврач принял объяснения старшей акушерки. Пронесло', 'good'); S.atata = 50; S.summon = null; }
+  else { S.summon.pen = 30; zavAway(rint(40, 55), 'atata'); note('Главврач в ярости: «Где заведующий?!» Зав бежит на ковёр', 'bad'); }
+}
+LATER.atataGo = () => { if (S.summon && staffBy('zav').state !== 'away') zavAway(rint(30, 50), 'atata'); };
+LATER.meetCard = () => card('Планёрка у главврача', 'В 09:00 планёрка, заведующие обязаны быть. Это 20 минут вне родблока.', ['Пойти на планёрку', 'Сказаться занятым'], 'meeting');
+LATER.meetGo = () => { if (staffBy('zav').state !== 'away') zavAway(20, 'meeting'); };
+function meetingChoice(idx) {
+  if (idx === 0) S.later.push({ t: Math.max(S.t + 1, 60), k: 'meetGo' });
+  else { blame(25, 'пропуск планёрки'); note('Главврач отметил ваше отсутствие на планёрке', 'warn'); }
+}
 /* ===== РОДБЛОК · интерфейс: план этажа ===== */
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -1817,6 +1885,7 @@ function renderHUD() {
 function staffState(s) {
   if (s.role === 'pmu' && s.out) return 'не в отделении';
   if (s.role === 'pmu' && s.state === 'away') return 'едет, ещё ' + Math.max(1, s.awayUntil - S.t) + ' мин';
+  if (s.role === 'zav' && s.state === 'away') return (S.zavOut === 'meeting' ? 'на планёрке' : 'на ковре у главврача') + ', ещё ' + Math.max(1, s.awayUntil - S.t) + ' мин';
   if (s.state === 'away') return 'в общей реанимации';
   if (s.state === 'rest') return 'спит в ординаторской';
   const tk = s.taskId && task(s.taskId);
@@ -1825,7 +1894,7 @@ function staffState(s) {
   return he(s, 'свободен', 'свободна') + (s.loc === 'ord' ? ', ординат.' : '');
 }
 function renderStaff() {
-  setHTML($('staffbar'), S.staff.filter(s => !s.out).map(s => `<button type="button" class="chip${s.role === 'zav' ? ' zav' : ''}" data-act="staff" data-id="${s.id}"><span class="cn"><i class="dot ${s.role}"></i>${s.role === 'zav' ? 'Зав · ты' : s.role === 'pmu' ? 'ПМУ · ' + esc(s.name) : s.short + ' ' + esc(s.name)}</span><span class="cs">${esc(staffState(s))}</span><span class="en"><i style="width:${Math.round(s.energy)}%;background:${s.energy < 30 ? 'var(--lamp-r)' : s.energy < 55 ? 'var(--lamp-y)' : 'var(--lamp-g)'}"></i></span></button>`).join(''));
+  setHTML($('staffbar'), S.staff.filter(s => !s.out).map(s => `<button type="button" class="chip${s.role === 'zav' ? ' zav' + ((S.atata || 0) >= 70 ? ' angry' : '') : ''}" data-act="staff" data-id="${s.id}"><span class="cn"><i class="dot ${s.role}"></i>${s.role === 'zav' ? 'Зав · ты' : s.role === 'pmu' ? 'ПМУ · ' + esc(s.name) : s.short + ' ' + esc(s.name)}</span><span class="cs">${esc(staffState(s) + (s.role === 'zav' ? ' · гнев ' + Math.round(S.atata || 0) : ''))}</span><span class="en"><i style="width:${Math.round(s.energy)}%;background:${s.energy < 30 ? 'var(--lamp-r)' : s.energy < 55 ? 'var(--lamp-y)' : 'var(--lamp-g)'}"></i></span></button>`).join(''));
 }
 function renderTray() {
   const pend = S.decisions.filter(d => !d.done).sort((a, b) => (b.red ? 1 : 0) - (a.red ? 1 : 0) || a.t - b.t);
@@ -1900,6 +1969,10 @@ function pmuSheet(s) {
   let h = `<div class="eyebrow">Врач ПМУ · ${esc(s.title)}</div><h2>${esc(s.name)}</h2><div class="who">${esc(s.quirk)} · ${esc(staffState(s))}</div>`;
   h += mine.length ? `<div class="who">Ведёт: ${mine.map(p => esc(p.name) + ' (' + esc(shortLoc(p.loc || 'priem')) + ')').join(', ')}</div><button type="button" class="btn o" data-act="pmuoff" data-id="${s.id}">Забрать ${he(s, 'его', 'её')} пациенток дежурным</button>` : '<p class="who">Своих пациенток сейчас нет.</p>';
   return h + closeBtn();
+}
+function zavAngerHTML() {
+  const a = Math.round(S.atata || 0), last = S.blameLog.slice(-4).reverse();
+  return `<div class="who">Гнев руководства: ${a} из 100${a >= 70 ? ' — главврач уже спрашивал' : ''}</div>` + (last.length ? `<div class="who">${last.map(b => clock(b.t) + ' · ' + esc(b.reason) + ' +' + b.pts).join('<br>')}</div>` : '');
 }
 /* ===== РОДБЛОК · интерфейс: шторки, решения, цикл ===== */
 const closeBtn = () => '<button type="button" class="btn o" data-act="close">Закрыть</button>';
@@ -1996,7 +2069,7 @@ function miscSheet(loc) {
 function staffSheet(id) {
   const s = staffBy(id); if (!s) return closeBtn();
   if (s.role === 'pmu') return pmuSheet(s);
-  let h = `<div class="eyebrow">${esc(ROLES[s.role])}</div><h2>${esc(s.short + ' · ' + s.name)}</h2><div class="who">${esc(staffState(s))} · бодрость ${Math.round(s.energy)}%</div><div class="row">`;
+  let h = `<div class="eyebrow">${esc(ROLES[s.role])}</div><h2>${esc(s.short + ' · ' + s.name)}</h2><div class="who">${esc(staffState(s))} · бодрость ${Math.round(s.energy)}%</div>${s.role === 'zav' ? zavAngerHTML() : ''}<div class="row">`;
   if (s.taskId) h += `<button type="button" class="btn sm o" data-act="free" data-id="${s.id}">Снять с задачи</button>`;
   if (s.state === 'rest' || s.rest) h += `<button type="button" class="btn sm o" data-act="wake" data-id="${s.id}">Поднять</button>`;
   else if (s.state !== 'away') h += `<button type="button" class="btn sm o" data-act="rest" data-id="${s.id}">Отправить поспать</button>`;
@@ -2019,7 +2092,7 @@ function settingsSheet() {
   return `<div class="eyebrow">Правила и настройки</div><h2>Как играть</h2>${rulesHTML()}<label class="switch"><input type="checkbox" id="optAuto" data-act="toggle" data-k="auto"${S.auto ? ' checked' : ''}> Дежурные сами бегут на кнопки</label><label class="switch"><input type="checkbox" id="optPause" data-act="toggle" data-k="autoPause"${S.autoPause ? ' checked' : ''}> Пауза на красных вызовах и событиях</label><div class="row"><button type="button" class="btn o" data-act="restart">Сдать смену и начать новую</button>${closeBtn()}</div>`;
 }
 function rulesHTML() {
-  return `<div class="legend"><div><span class="lamps"><i class="lamp g on"></i></span> зелёная — плановый вызов акушера</div><div><span class="lamps"><i class="lamp y on"></i></span> жёлтая — вызов неонатолога</div><div><span class="lamps"><i class="lamp r on"></i></span> красная — экстренный вызов</div><div>Мигает — никто не идёт. Горит — врач в пути.</div><div>Тапни бокс — пациентка и кого послать. Тапни сотрудника — куда отправить или уложить спать.</div><div>Пост — кнопка клининга. Неубранный бокс занять нельзя, ВБИ растёт.</div><div>Пациентки от руководства (★–★★★): без очереди, зав осматривает лично, любой промах — звонок сверху.</div><div>Врачи ПМУ ведут своих контрактных — разгружают дежурных, но иногда чудят. Разрешить или запретить — решаешь ты.</div><div>Ты — зав: решения в лотке внизу, а в крайнем случае идёшь к столу сам.</div></div>`;
+  return `<div class="legend"><div><span class="lamps"><i class="lamp g on"></i></span> зелёная — плановый вызов акушера</div><div><span class="lamps"><i class="lamp y on"></i></span> жёлтая — вызов неонатолога</div><div><span class="lamps"><i class="lamp r on"></i></span> красная — экстренный вызов</div><div>Мигает — никто не идёт. Горит — врач в пути.</div><div>Тапни бокс — пациентка и кого послать. Тапни сотрудника — куда отправить или уложить спать.</div><div>Пост — кнопка клининга. Неубранный бокс занять нельзя, ВБИ растёт.</div><div>Косяки копят гнев руководства. На 100 зава вызывают на ковёр — без него в родблоке тяжелее.</div><div>Пациентки от руководства (★–★★★): без очереди, зав осматривает лично, любой промах — звонок сверху.</div><div>Врачи ПМУ ведут своих контрактных — разгружают дежурных, но иногда чудят. Разрешить или запретить — решаешь ты.</div><div>Ты — зав: решения в лотке внизу, а в крайнем случае идёшь к столу сам.</div></div>`;
 }
 
 /* ---------- КТГ ---------- */
@@ -2073,7 +2146,7 @@ function showFeedback(res) {
 function openEvent(c) {
   UI.modal = { kind: 'ev', id: c.id }; UI.shownModals[c.id] = true;
   const btns = c.choices ? c.choices.map((t, i) => `<button type="button" class="opt" data-act="evch" data-id="${c.id}" data-i="${i}">${esc(t)}</button>`).join('') : '<button type="button" class="btn" data-act="closeModal">Понятно</button>';
-  showModal(`<div class="card${c.k && c.k.startsWith('boss') ? ' red' : ''}"><div class="eyebrow">${c.k && c.k.startsWith('boss') ? 'Босс' : 'Событие'} · ${clock(S.t)}</div><h2>${esc(c.title)}</h2><p class="clue">${esc(c.text)}</p><div class="opts">${btns}</div></div>`);
+  showModal(`<div class="card${c.k && (c.k.startsWith('boss') || c.k.startsWith('atata')) ? ' red' : ''}"><div class="eyebrow">${c.k && c.k.startsWith('boss') ? 'Босс' : c.k && (c.k.startsWith('atata') || c.k === 'meeting') ? 'Руководство' : 'Событие'} · ${clock(S.t)}</div><h2>${esc(c.title)}</h2><p class="clue">${esc(c.text)}</p><div class="opts">${btns}</div></div>`);
 }
 function nextModal(auto) {
   if (UI.modal) return true;
@@ -2090,7 +2163,7 @@ function openReport() {
   const cell = (b, s) => `<div><b>${b}</b><span>${s}</span></div>`;
   const rev = S.review.filter(x => x.byZav && !x.ok).slice(-8);
   showModal(`<div class="card"><div class="eyebrow">Сдача смены · 08:00</div><p class="big">${Math.round(S.score)}</p><div class="stars" aria-label="${F.stars} из 3">${'★'.repeat(F.stars)}${'☆'.repeat(3 - F.stars)}</div><h2>${esc(F.title)}</h2>${best ? `<div class="who">Прошлый рекорд: ${best}</div>` : ''}
-  <div class="rep">${cell(st.births, 'родов')}${cell(Math.round(F.csRate * 100) + '%', 'доля КС')}${cell(st.vep, 'ВЭП')}${cell(st.csEm, 'экстренных КС')}${cell(st.csNeedless, 'КС без показаний')}${cell(st.pph, 'ПРК')}${cell(st.kas, 'КАС')}${cell(st.asph, 'асфиксий')}${cell(st.oritn, 'в ОРИТН')}${cell(st.chorio, 'хориоамнионитов')}${cell(Math.round(S.vbiPeak), 'пик ВБИ')}${cell(st.palata, 'родов вне бокса')}${cell(st.noDoc, 'родов без врача')}${cell(st.complaints, 'жалоб')}${cell(st.decOk + '/' + st.decAll, 'верных решений')}${cell((st.bossWon || 0) + '/' + (S.waves ? S.waves.length : 0), 'боссов повержено')}${cell(st.arrivals, 'поступило')}${cell(st.maxQueue, 'макс. очередь')}${cell(st.pmuBirths || 0, 'контрактных родов')}${cell(st.pmuStopped || 0, 'абсурда остановлено')}${cell(st.pmuMissed || 0, 'абсурда пропущено')}${cell(st.vipTotal || 0, 'от руководства')}${cell(st.vipOk || 0, 'руководство довольно')}${cell(st.vipBad || 0, 'звонков сверху')}</div>
+  <div class="rep">${cell(st.births, 'родов')}${cell(Math.round(F.csRate * 100) + '%', 'доля КС')}${cell(st.vep, 'ВЭП')}${cell(st.csEm, 'экстренных КС')}${cell(st.csNeedless, 'КС без показаний')}${cell(st.pph, 'ПРК')}${cell(st.kas, 'КАС')}${cell(st.asph, 'асфиксий')}${cell(st.oritn, 'в ОРИТН')}${cell(st.chorio, 'хориоамнионитов')}${cell(Math.round(S.vbiPeak), 'пик ВБИ')}${cell(st.palata, 'родов вне бокса')}${cell(st.noDoc, 'родов без врача')}${cell(st.complaints, 'жалоб')}${cell(st.decOk + '/' + st.decAll, 'верных решений')}${cell((st.bossWon || 0) + '/' + (S.waves ? S.waves.length : 0), 'боссов повержено')}${cell(st.arrivals, 'поступило')}${cell(st.maxQueue, 'макс. очередь')}${cell(st.pmuBirths || 0, 'контрактных родов')}${cell(st.pmuStopped || 0, 'абсурда остановлено')}${cell(st.pmuMissed || 0, 'абсурда пропущено')}${cell(st.vipTotal || 0, 'от руководства')}${cell(st.vipOk || 0, 'руководство довольно')}${cell(st.vipBad || 0, 'звонков сверху')}${cell(st.atata || 0, 'вызовов на ковёр')}${cell(Math.round(S.atataPeak || 0), 'пик гнева')}${cell(st.atataMin || 0, 'минут на ковре')}</div>
   ${F.bonus.length ? `<div class="who"><b>Бонусы:</b> ${esc(F.bonus.join(' · '))}</div>` : ''}
   ${rev.length ? `<h3>Разбор ошибок</h3><div class="revl">${rev.map(x => `<div><span class="bad-t">${clock(x.t)} ${esc(x.where)} · ${esc(x.title)}</span><br>Выбрано: ${esc(x.choice)}<br>Правильнее: ${esc(x.best || '')}<br>${esc(x.why)}</div>`).join('')}</div>` : '<div class="who">Ошибок в решениях нет.</div>'}
   <button type="button" class="btn" data-act="restart">Новая смена</button></div>`);
@@ -2143,8 +2216,8 @@ document.addEventListener('click', e => {
     case 'post': openSheet({ kind: 'post' }); break;
     case 'log': openSheet({ kind: 'log' }); break;
     case 'staff': openSheet({ kind: 'staff', id }); break;
-    case 'send': { const ok = manualAssign(el.dataset.staff, +el.dataset.task); if (!ok) note('Этот сотрудник туда не подходит', 'warn'); else if (UI.open && UI.open.kind === 'staff') closeSheet(); refreshSheet(true); break; }
-    case 'zavgo': manualAssign('zav', +el.dataset.task); break;
+    case 'send': { const ok = manualAssign(el.dataset.staff, +el.dataset.task); if (!ok) note(staffBy(el.dataset.staff) && staffBy(el.dataset.staff).state === 'away' ? 'Сейчас вне родблока' : 'Этот сотрудник туда не подходит', 'warn'); else if (UI.open && UI.open.kind === 'staff') closeSheet(); refreshSheet(true); break; }
+    case 'zavgo': if (!manualAssign('zav', +el.dataset.task)) note('Зав сейчас вне родблока', 'warn'); break;
     case 'rest': sendRest(id); refreshSheet(true); break;
     case 'wake': wake(id); refreshSheet(true); break;
     case 'free': release(id); refreshSheet(true); break;
@@ -2173,7 +2246,7 @@ window.addEventListener('resize', () => { UI.tokPos = {}; placeTokens(true); });
 
 /* ---------- запуск ---------- */
 function boot(data) {
-  if (data && data.S && data.S.v === 2) { S = data.S; SEED = S.rng; UI.started = !!data.started; }
+  if (data && data.S && data.S.v === 3) { S = data.S; SEED = S.rng; UI.started = !!data.started; }
   else newGame();
   buildBoard(); render(); placeTokens(true);
   if (!UI.started) showStart(); else setSpeed(0);

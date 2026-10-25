@@ -63,6 +63,7 @@ function winWave(w, D) {
 function loseWave(w, D) {
   w.state = 'lost'; S.st.bossLost++;
   addScore(-30, 'Босс победил: ' + D.name);
+  blame(20, 'провален наплыв');
   complaint(null, D.k === 'opb' ? 'заведующая ОПБ написала главврачу' : 'пациентки часами ждали места');
   card('Босс победил', D.name + ': за ' + D.limit + ' минут не разместили ещё ' + w.left + '. −30 и жалоба.', null, 'bosslose');
 }

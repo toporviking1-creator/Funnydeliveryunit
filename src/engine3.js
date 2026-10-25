@@ -64,7 +64,7 @@ HANDLERS.cs = tk => {
   p.extractT = (tk.startT != null ? tk.startT : S.t) + 8;
   if (p.flags.abrupt) p.abruptLate = p.extractT - p.arrived > 30;
   if (p.csPri >= 3) S.st.csEm++;
-  if (p.flags.needlessCS) { S.st.csNeedless++; addScore(-10, 'КС без показаний'); }
+  if (p.flags.needlessCS) { S.st.csNeedless++; addScore(-10, 'КС без показаний'); blame(6, 'КС без показаний'); }
   born(p, 'cs');
   cancelTasks(p, ['birth']);
   vacate(p, true); p.phase = 'gone';
@@ -163,6 +163,7 @@ LATER.opbBad = e => {
   const p = pat(e.pid); if (!p) return;
   const serious = ['previa', 'pe'].includes(p.kind);
   if (serious) S.st.kas++;
+  blame(serious ? 25 : 10, serious ? 'КАС в ОПБ' : 'роды в ОПБ');
   addScore(serious ? -35 : -25, 'Отправлена в ОПБ не по делу');
   note(p.name + ' в ОПБ: ' + (p.kind === 'previa' ? 'кровотечение, КАС' : p.kind === 'pe' ? 'эклампсия, КАС' : 'родила в палате ОПБ') + ' — разбор у главврача', 'bad');
 };
@@ -259,6 +260,8 @@ function eventChoice(id, idx) {
   if (!c) return;
   c.chosen = idx;
   if (c.k === 'vipcall') vipCallChoice(c, idx);
+  if (c.k === 'atata') atataChoice(idx);
+  if (c.k === 'meeting') meetingChoice(idx);
   if (c.k === 'mil') {
     if (idx === 0) addTask({ type: 'mil', loc: 'priem', label: 'Поговорить со свекровью', need: { zav: 1 }, dur: 15, pri: 1, deadline: S.t + 30, failAt: S.t + 90 });
     else if (chance(0.5)) complaint(null, 'свекровь написала в ДЗМ');
@@ -279,6 +282,7 @@ function dzmEval(withZav) {
   const dirty = dirtyRooms().length, q = S.queue.length;
   const pts = (withZav ? 15 : 0) + 25 - dirty * 7 - q * 6;
   addScore(pts, 'Итог проверки ДЗМ');
+  if (pts < 0) blame(20, 'предписание ДЗМ');
   note('Комиссия ДЗМ: грязных помещений ' + dirty + ', в очереди ' + q + ' — ' + (pts >= 0 ? 'уехали довольные' : 'будет предписание'), pts >= 0 ? 'good' : 'bad');
 }
 

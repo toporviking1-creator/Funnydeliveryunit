@@ -93,7 +93,7 @@ function miscSheet(loc) {
 function staffSheet(id) {
   const s = staffBy(id); if (!s) return closeBtn();
   if (s.role === 'pmu') return pmuSheet(s);
-  let h = `<div class="eyebrow">${esc(ROLES[s.role])}</div><h2>${esc(s.short + ' · ' + s.name)}</h2><div class="who">${esc(staffState(s))} · бодрость ${Math.round(s.energy)}%</div><div class="row">`;
+  let h = `<div class="eyebrow">${esc(ROLES[s.role])}</div><h2>${esc(s.short + ' · ' + s.name)}</h2><div class="who">${esc(staffState(s))} · бодрость ${Math.round(s.energy)}%</div>${s.role === 'zav' ? zavAngerHTML() : ''}<div class="row">`;
   if (s.taskId) h += `<button type="button" class="btn sm o" data-act="free" data-id="${s.id}">Снять с задачи</button>`;
   if (s.state === 'rest' || s.rest) h += `<button type="button" class="btn sm o" data-act="wake" data-id="${s.id}">Поднять</button>`;
   else if (s.state !== 'away') h += `<button type="button" class="btn sm o" data-act="rest" data-id="${s.id}">Отправить поспать</button>`;
@@ -116,7 +116,7 @@ function settingsSheet() {
   return `<div class="eyebrow">Правила и настройки</div><h2>Как играть</h2>${rulesHTML()}<label class="switch"><input type="checkbox" id="optAuto" data-act="toggle" data-k="auto"${S.auto ? ' checked' : ''}> Дежурные сами бегут на кнопки</label><label class="switch"><input type="checkbox" id="optPause" data-act="toggle" data-k="autoPause"${S.autoPause ? ' checked' : ''}> Пауза на красных вызовах и событиях</label><div class="row"><button type="button" class="btn o" data-act="restart">Сдать смену и начать новую</button>${closeBtn()}</div>`;
 }
 function rulesHTML() {
-  return `<div class="legend"><div><span class="lamps"><i class="lamp g on"></i></span> зелёная — плановый вызов акушера</div><div><span class="lamps"><i class="lamp y on"></i></span> жёлтая — вызов неонатолога</div><div><span class="lamps"><i class="lamp r on"></i></span> красная — экстренный вызов</div><div>Мигает — никто не идёт. Горит — врач в пути.</div><div>Тапни бокс — пациентка и кого послать. Тапни сотрудника — куда отправить или уложить спать.</div><div>Пост — кнопка клининга. Неубранный бокс занять нельзя, ВБИ растёт.</div><div>Пациентки от руководства (★–★★★): без очереди, зав осматривает лично, любой промах — звонок сверху.</div><div>Врачи ПМУ ведут своих контрактных — разгружают дежурных, но иногда чудят. Разрешить или запретить — решаешь ты.</div><div>Ты — зав: решения в лотке внизу, а в крайнем случае идёшь к столу сам.</div></div>`;
+  return `<div class="legend"><div><span class="lamps"><i class="lamp g on"></i></span> зелёная — плановый вызов акушера</div><div><span class="lamps"><i class="lamp y on"></i></span> жёлтая — вызов неонатолога</div><div><span class="lamps"><i class="lamp r on"></i></span> красная — экстренный вызов</div><div>Мигает — никто не идёт. Горит — врач в пути.</div><div>Тапни бокс — пациентка и кого послать. Тапни сотрудника — куда отправить или уложить спать.</div><div>Пост — кнопка клининга. Неубранный бокс занять нельзя, ВБИ растёт.</div><div>Косяки копят гнев руководства. На 100 зава вызывают на ковёр — без него в родблоке тяжелее.</div><div>Пациентки от руководства (★–★★★): без очереди, зав осматривает лично, любой промах — звонок сверху.</div><div>Врачи ПМУ ведут своих контрактных — разгружают дежурных, но иногда чудят. Разрешить или запретить — решаешь ты.</div><div>Ты — зав: решения в лотке внизу, а в крайнем случае идёшь к столу сам.</div></div>`;
 }
 
 /* ---------- КТГ ---------- */
@@ -170,7 +170,7 @@ function showFeedback(res) {
 function openEvent(c) {
   UI.modal = { kind: 'ev', id: c.id }; UI.shownModals[c.id] = true;
   const btns = c.choices ? c.choices.map((t, i) => `<button type="button" class="opt" data-act="evch" data-id="${c.id}" data-i="${i}">${esc(t)}</button>`).join('') : '<button type="button" class="btn" data-act="closeModal">Понятно</button>';
-  showModal(`<div class="card${c.k && c.k.startsWith('boss') ? ' red' : ''}"><div class="eyebrow">${c.k && c.k.startsWith('boss') ? 'Босс' : 'Событие'} · ${clock(S.t)}</div><h2>${esc(c.title)}</h2><p class="clue">${esc(c.text)}</p><div class="opts">${btns}</div></div>`);
+  showModal(`<div class="card${c.k && (c.k.startsWith('boss') || c.k.startsWith('atata')) ? ' red' : ''}"><div class="eyebrow">${c.k && c.k.startsWith('boss') ? 'Босс' : c.k && (c.k.startsWith('atata') || c.k === 'meeting') ? 'Руководство' : 'Событие'} · ${clock(S.t)}</div><h2>${esc(c.title)}</h2><p class="clue">${esc(c.text)}</p><div class="opts">${btns}</div></div>`);
 }
 function nextModal(auto) {
   if (UI.modal) return true;
@@ -187,7 +187,7 @@ function openReport() {
   const cell = (b, s) => `<div><b>${b}</b><span>${s}</span></div>`;
   const rev = S.review.filter(x => x.byZav && !x.ok).slice(-8);
   showModal(`<div class="card"><div class="eyebrow">Сдача смены · 08:00</div><p class="big">${Math.round(S.score)}</p><div class="stars" aria-label="${F.stars} из 3">${'★'.repeat(F.stars)}${'☆'.repeat(3 - F.stars)}</div><h2>${esc(F.title)}</h2>${best ? `<div class="who">Прошлый рекорд: ${best}</div>` : ''}
-  <div class="rep">${cell(st.births, 'родов')}${cell(Math.round(F.csRate * 100) + '%', 'доля КС')}${cell(st.vep, 'ВЭП')}${cell(st.csEm, 'экстренных КС')}${cell(st.csNeedless, 'КС без показаний')}${cell(st.pph, 'ПРК')}${cell(st.kas, 'КАС')}${cell(st.asph, 'асфиксий')}${cell(st.oritn, 'в ОРИТН')}${cell(st.chorio, 'хориоамнионитов')}${cell(Math.round(S.vbiPeak), 'пик ВБИ')}${cell(st.palata, 'родов вне бокса')}${cell(st.noDoc, 'родов без врача')}${cell(st.complaints, 'жалоб')}${cell(st.decOk + '/' + st.decAll, 'верных решений')}${cell((st.bossWon || 0) + '/' + (S.waves ? S.waves.length : 0), 'боссов повержено')}${cell(st.arrivals, 'поступило')}${cell(st.maxQueue, 'макс. очередь')}${cell(st.pmuBirths || 0, 'контрактных родов')}${cell(st.pmuStopped || 0, 'абсурда остановлено')}${cell(st.pmuMissed || 0, 'абсурда пропущено')}${cell(st.vipTotal || 0, 'от руководства')}${cell(st.vipOk || 0, 'руководство довольно')}${cell(st.vipBad || 0, 'звонков сверху')}</div>
+  <div class="rep">${cell(st.births, 'родов')}${cell(Math.round(F.csRate * 100) + '%', 'доля КС')}${cell(st.vep, 'ВЭП')}${cell(st.csEm, 'экстренных КС')}${cell(st.csNeedless, 'КС без показаний')}${cell(st.pph, 'ПРК')}${cell(st.kas, 'КАС')}${cell(st.asph, 'асфиксий')}${cell(st.oritn, 'в ОРИТН')}${cell(st.chorio, 'хориоамнионитов')}${cell(Math.round(S.vbiPeak), 'пик ВБИ')}${cell(st.palata, 'родов вне бокса')}${cell(st.noDoc, 'родов без врача')}${cell(st.complaints, 'жалоб')}${cell(st.decOk + '/' + st.decAll, 'верных решений')}${cell((st.bossWon || 0) + '/' + (S.waves ? S.waves.length : 0), 'боссов повержено')}${cell(st.arrivals, 'поступило')}${cell(st.maxQueue, 'макс. очередь')}${cell(st.pmuBirths || 0, 'контрактных родов')}${cell(st.pmuStopped || 0, 'абсурда остановлено')}${cell(st.pmuMissed || 0, 'абсурда пропущено')}${cell(st.vipTotal || 0, 'от руководства')}${cell(st.vipOk || 0, 'руководство довольно')}${cell(st.vipBad || 0, 'звонков сверху')}${cell(st.atata || 0, 'вызовов на ковёр')}${cell(Math.round(S.atataPeak || 0), 'пик гнева')}${cell(st.atataMin || 0, 'минут на ковре')}</div>
   ${F.bonus.length ? `<div class="who"><b>Бонусы:</b> ${esc(F.bonus.join(' · '))}</div>` : ''}
   ${rev.length ? `<h3>Разбор ошибок</h3><div class="revl">${rev.map(x => `<div><span class="bad-t">${clock(x.t)} ${esc(x.where)} · ${esc(x.title)}</span><br>Выбрано: ${esc(x.choice)}<br>Правильнее: ${esc(x.best || '')}<br>${esc(x.why)}</div>`).join('')}</div>` : '<div class="who">Ошибок в решениях нет.</div>'}
   <button type="button" class="btn" data-act="restart">Новая смена</button></div>`);
@@ -240,8 +240,8 @@ document.addEventListener('click', e => {
     case 'post': openSheet({ kind: 'post' }); break;
     case 'log': openSheet({ kind: 'log' }); break;
     case 'staff': openSheet({ kind: 'staff', id }); break;
-    case 'send': { const ok = manualAssign(el.dataset.staff, +el.dataset.task); if (!ok) note('Этот сотрудник туда не подходит', 'warn'); else if (UI.open && UI.open.kind === 'staff') closeSheet(); refreshSheet(true); break; }
-    case 'zavgo': manualAssign('zav', +el.dataset.task); break;
+    case 'send': { const ok = manualAssign(el.dataset.staff, +el.dataset.task); if (!ok) note(staffBy(el.dataset.staff) && staffBy(el.dataset.staff).state === 'away' ? 'Сейчас вне родблока' : 'Этот сотрудник туда не подходит', 'warn'); else if (UI.open && UI.open.kind === 'staff') closeSheet(); refreshSheet(true); break; }
+    case 'zavgo': if (!manualAssign('zav', +el.dataset.task)) note('Зав сейчас вне родблока', 'warn'); break;
     case 'rest': sendRest(id); refreshSheet(true); break;
     case 'wake': wake(id); refreshSheet(true); break;
     case 'free': release(id); refreshSheet(true); break;
@@ -270,7 +270,7 @@ window.addEventListener('resize', () => { UI.tokPos = {}; placeTokens(true); });
 
 /* ---------- запуск ---------- */
 function boot(data) {
-  if (data && data.S && data.S.v === 2) { S = data.S; SEED = S.rng; UI.started = !!data.started; }
+  if (data && data.S && data.S.v === 3) { S = data.S; SEED = S.rng; UI.started = !!data.started; }
   else newGame();
   buildBoard(); render(); placeTokens(true);
   if (!UI.started) showStart(); else setSpeed(0);

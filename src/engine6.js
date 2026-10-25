@@ -21,7 +21,7 @@ function assignVIP(p) {
 function vipHit(p, why) {
   if (!p || !p.vip) return;
   addScore(-10 * p.vip, 'Руководство: ' + why);
-  p.flags.vipBad = true; S.st.vipBad++;
+  p.flags.vipBad = true; S.st.vipBad++; blame(8 * p.vip, 'звонок сверху');
   note(VIP_WHO[p.vip] + ' звонит заву: ' + why + ' у «нашей девочки»', 'bad');
 }
 function vipResolve(p) {

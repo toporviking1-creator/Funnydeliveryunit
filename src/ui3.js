@@ -19,3 +19,7 @@ function pmuSheet(s) {
   h += mine.length ? `<div class="who">Ведёт: ${mine.map(p => esc(p.name) + ' (' + esc(shortLoc(p.loc || 'priem')) + ')').join(', ')}</div><button type="button" class="btn o" data-act="pmuoff" data-id="${s.id}">Забрать ${he(s, 'его', 'её')} пациенток дежурным</button>` : '<p class="who">Своих пациенток сейчас нет.</p>';
   return h + closeBtn();
 }
+function zavAngerHTML() {
+  const a = Math.round(S.atata || 0), last = S.blameLog.slice(-4).reverse();
+  return `<div class="who">Гнев руководства: ${a} из 100${a >= 70 ? ' — главврач уже спрашивал' : ''}</div>` + (last.length ? `<div class="who">${last.map(b => clock(b.t) + ' · ' + esc(b.reason) + ' +' + b.pts).join('<br>')}</div>` : '');
+}

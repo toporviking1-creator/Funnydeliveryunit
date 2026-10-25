@@ -240,3 +240,4 @@ h3 { font-size: 15px; margin: 0; }
 .pill.pm { border-color: var(--gold); color: var(--gold); }
 .tag.vip { background: var(--gold); border-color: var(--gold); color: #1A1200; }
 .qd.vip { background: var(--gold); border-color: var(--gold); }
+.chip.zav.angry { border-color: var(--lamp-r); }
