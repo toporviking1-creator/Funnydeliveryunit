@@ -253,6 +253,8 @@ h3 { font-size: 15px; margin: 0; }
 .card.gold { border-color: var(--gold); box-shadow: 0 0 0 4px color-mix(in srgb, var(--gold) 35%, transparent); }
 .card.gold .eyebrow { color: var(--warn); }
 .pill.pm { border-color: var(--gold); color: var(--gold); }
+.tag.vip { background: var(--gold); border-color: var(--gold); color: #1A1200; }
+.qd.vip { background: var(--gold); border-color: var(--gold); }
 </style>
 </head>
 <body>
@@ -525,7 +527,7 @@ function newGame(seed) {
     score: 0, vbi: 6, vbiPeak: 6, pauseReq: false,
     mod: { arrival: 1, arrivalUntil: 0, rest: 1, restUntil: 0 },
     slow: {}, ev: { next: rint(45, 80), used: {} }, dzm: null,
-    st: { arrivals: 0, births: 0, vag: 0, vep: 0, cs: 0, csEm: 0, csNeedless: 0, pph: 0, kas: 0, asph: 0, oritn: 0, chorio: 0, palata: 0, complaints: 0, noDoc: 0, dyst: 0, decOk: 0, decAll: 0, maxQueue: 0, dirtyUse: 0, cleaned: 0, pmuBirths: 0, pmuStopped: 0, pmuMissed: 0 },
+    st: { arrivals: 0, births: 0, vag: 0, vep: 0, cs: 0, csEm: 0, csNeedless: 0, pph: 0, kas: 0, asph: 0, oritn: 0, chorio: 0, palata: 0, complaints: 0, noDoc: 0, dyst: 0, decOk: 0, decAll: 0, maxQueue: 0, dirtyUse: 0, cleaned: 0, pmuBirths: 0, pmuStopped: 0, pmuMissed: 0, vipTotal: 0, vipOk: 0, vipBad: 0 },
   };
   for (const id of BED_IDS) S.rooms[id] = { id, pid: null, dirty: false, cleanTask: null, dirtyAfter: false };
   for (const r of ROSTER) S.staff.push({ id: r.id, role: r.role, name: r.name, short: r.short, f: r.f || 0, energy: rint(80, 100), loc: r.start, dest: null, eta: 0, depart: 0, state: 'idle', taskId: null, slot: null, rest: false, forced: false, awayUntil: 0 });
@@ -778,6 +780,7 @@ function makePatient(kind, noQueue) {
   S.P[p.id] = p;
   if (!noQueue) { S.queue.push(p.id); S.st.arrivals++; }
   assignPMU(p);
+  assignVIP(p);
   return p;
 }
 function initLab(p) {
@@ -838,7 +841,7 @@ function queueTick() {
     p.loc = rid; r.pid = p.id; p.phase = 'triage';
     addTask({ type: 'triage', loc: rid, pid: p.id, label: 'Осмотр в распреде', need: { obst: 1 }, dur: p.flags.blogger ? 20 : 8, pri: p.lab === 'second' ? 3 : 2, lamps: ['g'], callAt: S.t + mwDelay('rd') });
   }
-  for (const id of S.queue) { const p = pat(id); if (p && S.t - p.arrived === 60) complaint(p, 'час в очереди в приёмном'); }
+  for (const id of S.queue) { const p = pat(id); if (p && S.t - p.arrived === 60) complaint(p, 'час в очереди в приёмном'); if (p && p.vip && S.t - p.arrived === 25) vipHit(p, 'ждала в приёмном'); }
 }
 HANDLERS.triage = tk => { const p = pat(tk.pid); if (!p || p.bornT != null || p.phase === 'gone') return; p.phase = 'await'; addDecision({ kind: 'triage', pid: p.id }); };
 function mwDelay(z) {
@@ -853,6 +856,7 @@ function complaint(p, reason) {
   const pen = p && p.flags.blogger ? 30 : p && p.flags.contract ? 25 : 15;
   addScore(-pen, 'Жалоба: ' + reason);
   if (p) p.flags.complained = true;
+  if (p && p.vip) vipHit(p, 'жалоба пациентки');
   note('Жалоба: ' + reason + (p && p.flags.blogger ? ' — и пост в соцсетях' : ''), 'bad');
 }
 
@@ -905,11 +909,11 @@ function deliver(p) {
   const shop = p.shopUntil && S.t < p.shopUntil;
   if (shop) { p.obstAt = false; p.neoAt = false; S.st.palata++; p.flags.outside = true; addScore(-20, 'Роды по дороге из магазина'); note(p.name + ' родила в такси по дороге из магазина!', 'bad'); complaint(p, 'в родах отпустили в магазин'); }
   else if (!isBox(where) && !isOR(where) && !p.flags.lift) {
-    S.st.palata++; p.flags.outside = true; addScore(-20, 'Роды вне бокса');
+    S.st.palata++; p.flags.outside = true; addScore(-20, 'Роды вне бокса'); vipHit(p, 'роды вне бокса');
     note('Роды прямо здесь: ' + locName(where) + '!', 'bad');
     if (S.rooms[where]) S.rooms[where].dirtyAfter = true;
   }
-  if (!p.obstAt) { S.st.noDoc++; addScore(-6, 'Роды без врача'); note(locName(where) + ': роды приняла акушерка, врача не было', 'warn'); }
+  if (!p.obstAt) { S.st.noDoc++; addScore(-6, 'Роды без врача'); vipHit(p, 'роды без врача'); note(locName(where) + ': роды приняла акушерка, врача не было', 'warn'); }
   if (p.flags.kristeller) addScore(-10, 'Приём Кристеллера');
   if (chance(0.012 + (p.big ? 0.06 : 0) + (p.flags.kristeller ? 0.05 : 0))) { startDyst(p); return; }
   born(p, 'vag');
@@ -951,7 +955,7 @@ function apgar(p) {
 function startResus(p) {
   addTask({ type: 'resus', loc: p.loc || 'priem', pid: p.id, label: 'Реанимация новорождённого', need: { reanim: 1 }, dur: 10, pri: 3, lamps: ['r'], deadline: S.t + 3, failAt: S.t + 12 });
 }
-LATE.resus = tk => { const p = pat(tk.pid); if (p && !p.flags.asph) { p.flags.asph = true; S.st.asph++; addScore(-40, 'Асфиксия: реаниматолог опоздал'); note('Реаниматолог не успел — асфиксия новорождённого!', 'bad'); } };
+LATE.resus = tk => { const p = pat(tk.pid); if (p && !p.flags.asph) { p.flags.asph = true; S.st.asph++; addScore(-40, 'Асфиксия: реаниматолог опоздал'); vipHit(p, 'асфиксия новорождённого'); note('Реаниматолог не успел — асфиксия новорождённого!', 'bad'); } };
 FAIL.resus = tk => { closeTask(tk); const p = pat(tk.pid); if (p) transferBaby(p); };
 HANDLERS.resus = tk => { const p = pat(tk.pid); if (p) transferBaby(p); };
 function transferBaby(p) { S.st.oritn++; addTask({ type: 'transfer', loc: 'oritn', pid: p.id, label: 'Малыш в ОРИТН', need: { reanim: 1 }, dur: 6, pri: 2, failAt: S.t + 90 }); }
@@ -967,7 +971,7 @@ function vacate(p, dirty) {
   const r = p.loc && S.rooms[p.loc];
   if (r && r.pid === p.id) { r.pid = null; if (dirty || r.dirtyAfter) { r.dirty = true; r.dirtyAfter = false; } }
 }
-function discharge(p) { vacate(p, isBox(p.loc) || isOR(p.loc)); p.phase = 'gone'; p.want = null; cancelTasks(p, null, ['transfer', 'resus']); }
+function discharge(p) { vacate(p, isBox(p.loc) || isOR(p.loc)); p.phase = 'gone'; p.want = null; cancelTasks(p, null, ['transfer', 'resus']); vipResolve(p); }
 function pphRoll(p) {
   const long = p.bornT - p.labStart > 720;
   const r = 0.055 + (p.para >= 3 ? 0.04 : 0) + (p.big ? 0.03 : 0) + (p.flags.chorio ? 0.05 : 0) + (long ? 0.04 : 0) + (p.flags.oxy ? 0.02 : 0);
@@ -984,7 +988,7 @@ HANDLERS.pph = tk => {
   if (p.pphOk == null) { p.pphOk = p.pph === 'tone'; closeDecisionFor(p.id, 'pph'); }
   const inTime = tk.startT != null && tk.startT <= tk.deadline;
   if (p.pphOk && inTime) note(locName(p.loc) + ': кровотечение остановлено, ~900 мл', 'good');
-  else { S.st.kas++; addScore(-35, 'КАС: массивная кровопотеря'); note(locName(p.loc) + ': кровопотеря 1800 мл — КАС, перевод в ОРИТ', 'bad'); }
+  else { S.st.kas++; addScore(-35, 'КАС: массивная кровопотеря'); vipHit(p, 'КАС'); note(locName(p.loc) + ': кровопотеря 1800 мл — КАС, перевод в ОРИТ', 'bad'); }
   p.pphActive = false; p.pphDone = true;
 };
 FAIL.pph = tk => { const p = pat(tk.pid); if (p) p.pphOk = false; tk.startT = null; finish(tk); };
@@ -1057,7 +1061,7 @@ HANDLERS.ecl = tk => {
   const p = pat(tk.pid); if (!p) return;
   if (p.eclOk == null) { p.eclOk = chance(0.6); closeDecisionFor(p.id, 'ecl'); }
   if (p.eclOk) note(locName(p.loc) + ': эклампсия купирована, состояние стабилизировано', 'good');
-  else { S.st.kas++; addScore(-30, 'КАС: эклампсия'); note(locName(p.loc) + ': КАС — эклампсия без стабилизации', 'bad'); }
+  else { S.st.kas++; addScore(-30, 'КАС: эклампсия'); vipHit(p, 'КАС'); note(locName(p.loc) + ': КАС — эклампсия без стабилизации', 'bad'); }
   p.flags.mg = true; p.em = null; p.flags.eclNow = false;
 };
 FAIL.ecl = tk => { const p = pat(tk.pid); if (p) p.eclOk = false; finish(tk); };
@@ -1150,6 +1154,7 @@ HANDLERS.cs = tk => {
   born(p, 'cs');
   cancelTasks(p, ['birth']);
   vacate(p, true); p.phase = 'gone';
+  vipResolve(p);
 };
 
 /* ---------- решения зава ---------- */
@@ -1172,6 +1177,7 @@ function decisionView(d) {
   const where = locName(p.loc || 'priem');
   const base = { where, who: patLine(p), red: !!d.red, pop: !!d.pop };
   if (d.kind === 'pmu') return pmuView(d, p, base);
+  if (d.kind === 'vipcs') return vipView(d, p, base);
   if (d.kind === 'triage') {
     const c = CASE[p.kind] || CASE.active;
     const extra = p.flags.blogger ? ' Принесла план родов на 12 листах.' : '';
@@ -1214,7 +1220,7 @@ function decide(id, idx) { const d = S.decisions.find(x => x.id === id); if (!d 
 function decisionsTick() {
   for (const d of S.decisions) {
     if (d.done) continue;
-    if (d.kind === 'pmu') { if (S.t - d.t >= 12) { const v = decisionView(d); applyDecision(d, v ? Math.max(0, v.options.findIndex(o => o.k === 'allow')) : 0, false); note('Врач ПМУ не дождался зава и сделал по-своему', 'warn'); } continue; }
+    if (d.kind === 'pmu' || d.kind === 'vipcs') { if (S.t - d.t >= 12) { const v = decisionView(d); const ak = d.kind === 'pmu' ? 'allow' : 'yes'; applyDecision(d, v ? Math.max(0, v.options.findIndex(o => o.k === ak)) : 0, false); note(d.kind === 'pmu' ? 'Врач ПМУ не дождался зава и сделал по-своему' : 'Руководство дозвонилось дежурному — пациентку повезли на КС', 'warn'); } continue; }
     const lim = d.red ? 4 : d.kind === 'triage' ? 25 : 20;
     if (S.t - d.t >= lim) {
       const v = decisionView(d);
@@ -1338,6 +1344,7 @@ function eventChoice(id, idx) {
   const c = S.modals.find(m => m.id === id);
   if (!c) return;
   c.chosen = idx;
+  if (c.k === 'vipcall') vipCallChoice(c, idx);
   if (c.k === 'mil') {
     if (idx === 0) addTask({ type: 'mil', loc: 'priem', label: 'Поговорить со свекровью', need: { zav: 1 }, dur: 15, pri: 1, deadline: S.t + 30, failAt: S.t + 90 });
     else if (chance(0.5)) complaint(null, 'свекровь написала в ДЗМ');
@@ -1591,6 +1598,80 @@ APPLY.pmu = (d, k) => {
     if (doc && doc.taskId && task(doc.taskId) && task(doc.taskId).pid === p.id) unassign(doc);
   }
 };
+/* ===== РОДБЛОК · пациентки от руководства ===== */
+const VIP_FROM = { 1: 'от начмеда', 2: 'от главврача', 3: 'из ДЗМ' };
+const VIP_WHO = { 1: 'Начмед', 2: 'Главврач', 3: 'ДЗМ' };
+const VIP_KINDS = ['active', 'latent', 'prom', 'pe', 'preterm'];
+const stars = n => '★'.repeat(n);
+function assignVIP(p) {
+  if (S.t === 0 || p.flags.contract || !VIP_KINDS.includes(p.kind) || !chance(0.09)) return;
+  const r = rnd();
+  p.vip = r < 0.55 ? 1 : r < 0.85 ? 2 : 3;
+  S.st.vipTotal++;
+  const q = S.queue, i = q.indexOf(p.id);
+  if (i >= 0) { q.splice(i, 1); let j = 0; while (j < q.length && pat(q[j]) && (pat(q[j]).vip || 0) >= p.vip) j++; q.splice(j, 0, p.id); }
+  const lim = [0, 60, 40, 25][p.vip];
+  addTask({ type: 'vipvisit', loc: p.loc || 'priem', pid: p.id, label: 'Осмотреть лично: ' + p.name + ' ' + stars(p.vip), need: { zav: 1 }, dur: 6, pri: 2, deadline: S.t + lim, failAt: S.t + 240 });
+  if (p.vip >= 2) {
+    card('Пациентка ' + VIP_FROM[p.vip] + ' ' + stars(p.vip), VIP_WHO[p.vip] + ' звонит: «Поступает наша девочка, ' + p.name + '. Посмотрите лично». Она идёт без очереди, а зав должен осмотреть её за ' + lim + ' минут.');
+    S.later.push({ t: S.t + rint(40, 120), k: 'vipcall', pid: p.id });
+  } else note('Пациентка ' + VIP_FROM[1] + ': ' + p.name + ' — без очереди, зав смотрит лично', 'warn');
+  if (p.vip === 3) S.later.push({ t: S.t + rint(25, 70), k: 'vipcs', pid: p.id });
+}
+function vipHit(p, why) {
+  if (!p || !p.vip) return;
+  addScore(-10 * p.vip, 'Руководство: ' + why);
+  p.flags.vipBad = true; S.st.vipBad++;
+  note(VIP_WHO[p.vip] + ' звонит заву: ' + why + ' у «нашей девочки»', 'bad');
+}
+function vipResolve(p) {
+  if (!p || !p.vip || p.vipDone) return;
+  p.vipDone = true;
+  if (!p.flags.vipBad) { addScore(10 * p.vip, 'Руководство благодарит'); S.st.vipOk++; note(VIP_WHO[p.vip] + ': «Спасибо, всё прекрасно!»', 'good'); }
+}
+HANDLERS.vipvisit = tk => { const p = pat(tk.pid); if (p) { p.flags.vipSeen = true; addScore(5 * (p.vip || 1), 'Зав осмотрел лично'); } };
+LATE.vipvisit = tk => vipHit(pat(tk.pid), 'зав так и не зашёл');
+LATER.vipcall = e => {
+  const p = pat(e.pid);
+  if (!p || p.phase === 'gone' || p.vipDone) return;
+  const c = card('Звонок: ' + VIP_WHO[p.vip], '«Как там ' + p.name + '?» — ' + VIP_WHO[p.vip].toLowerCase() + ' на линии и ждёт доклада.', ['Доложить лично', 'Пусть доложит дежурный врач'], 'vipcall');
+  c.pid = p.id;
+};
+function vipCallChoice(c, idx) {
+  const p = pat(c.pid); if (!p) return;
+  if (idx === 0) { const tk = addTask({ type: 'vipreport', loc: staffBy('zav').loc, pid: p.id, label: 'Доклад руководству', need: { zav: 1 }, dur: 5, pri: 2, failAt: S.t + 60 }); manualAssign('zav', tk.id); }
+  else if (chance(0.5)) vipHit(p, 'доложили не лично');
+  else note('На том конце выслушали дежурного и успокоились');
+}
+HANDLERS.vipreport = tk => { const p = pat(tk.pid); addScore(3 * ((p && p.vip) || 1), 'Доклад руководству'); note('Зав доложил лично — на том конце довольны', 'good'); };
+LATER.vipcs = e => {
+  const p = pat(e.pid);
+  if (!p || p.phase === 'gone' || p.bornT != null || p.want === 'or' || p.phase === 'or' || !(p.lab === 'active' || p.lab === 'latent')) return;
+  addDecision({ kind: 'vipcs', pid: p.id, pop: true });
+  S.pauseReq = true;
+};
+function vipView(d, p, base) {
+  return Object.assign(base, {
+    title: 'Звонок из ДЗМ',
+    clue: '«Пациентка боится, сделайте ей кесарево. Мы на контроле».',
+    fact: 'Объективно: ' + dilText(p) + ', КТГ — ' + ctgWord(p) + '. Медицинских показаний к КС нет.',
+    ctg: ['N', 'S', 'P'].includes(p.ctg) ? p.ctg : null,
+    options: [
+      { k: 'yes', label: 'Пойти навстречу — КС', ok: false },
+      { k: 'talk', label: 'Объяснить риски, вести роды по показаниям', ok: true },
+      { k: 'kons', label: 'Собрать консилиум', ok: true },
+    ],
+    why: 'Звонок руководства — не показание к КС. Без медицинских показаний кесарево повышает риски для матери и ребёнка; спорное решение оформляют консилиумом.',
+  });
+}
+APPLY.vipcs = (d, k) => {
+  const p = pat(d.pid); if (!p || p.bornT != null || p.phase === 'gone') return;
+  if (k === 'yes') { p.flags.needlessCS = true; requestCS(p, 2); return; }
+  if (k === 'talk') { if (chance(0.3)) vipHit(p, 'отказали в «просьбе»'); return; }
+  const tk = addTask({ type: 'konsilium', loc: p.loc || 'priem', pid: p.id, label: 'Консилиум: ' + p.name, need: { zav: 1, obst: 1 }, dur: 10, pri: 2, failAt: S.t + 120 });
+  manualAssign('zav', tk.id);
+};
+HANDLERS.konsilium = () => { addScore(10, 'Консилиум по VIP'); note('Консилиум: показаний к КС нет, ведём роды. В ДЗМ довольны протоколом', 'good'); };
 /* ===== РОДБЛОК · интерфейс: план этажа ===== */
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -1645,6 +1726,7 @@ function ptChip(p, sm) {
 }
 function tagsOf(p, max) {
   const t = [];
+  if (p.vip) t.push('<span class="tag vip">' + stars(p.vip) + '</span>');
   if (p.flags.contract && p.pmu) t.push('<span class="tag g">ПМУ</span>');
   if (p.flags.pe) t.push('<span class="tag r">ПЭ</span>');
   if (p.flags.chorio && p.bornT == null) t.push('<span class="tag r">t°</span>');
@@ -1675,6 +1757,7 @@ function renderBed(id) {
   let h = '';
   if (p) {
     h += ptChip(p, true);
+    if (p.vip) h += '<span class="tag vip">' + stars(p.vip) + '</span>';
     const dec = S.decisions.find(d => !d.done && d.pid === p.id);
     if (dec) h += '<span class="tag w">?</span>';
     else if (p.want === 'box') h += '<span class="tag">→бокс</span>';
@@ -1700,7 +1783,7 @@ function renderPriem() {
   const q = S.queue.map(pat).filter(Boolean);
   const longest = q.length ? S.t - Math.min(...q.map(p => p.arrived)) : 0;
   const extra = livePatients().filter(p => p.loc === 'priem' && p.phase !== 'queue');
-  setHTML($('r-priem'), `<div class="lbl"><span>Приёмное</span>${lampHTML(lampState('priem'))}</div><div class="sub">${q.length ? 'Очередь ' + q.length + (q.some(p => p.src === 'opb') ? ' (ОПБ ' + q.filter(p => p.src === 'opb').length + ')' : '') + ' · ждёт ' + longest + ' мин' : 'Очереди нет'}</div><div class="queue">${q.map(p => `<span class="qd${p.lab === 'second' ? ' hot' : p.src === 'opb' ? ' opb' : ''}"></span>`).join('')}${extra.map(p => ptChip(p, true)).join('')}</div>`);
+  setHTML($('r-priem'), `<div class="lbl"><span>Приёмное</span>${lampHTML(lampState('priem'))}</div><div class="sub">${q.length ? 'Очередь ' + q.length + (q.some(p => p.src === 'opb') ? ' (ОПБ ' + q.filter(p => p.src === 'opb').length + ')' : '') + ' · ждёт ' + longest + ' мин' : 'Очереди нет'}</div><div class="queue">${q.map(p => `<span class="qd${p.lab === 'second' ? ' hot' : p.vip ? ' vip' : p.src === 'opb' ? ' opb' : ''}"></span>`).join('')}${extra.map(p => ptChip(p, true)).join('')}</div>`);
 }
 function renderMisc() {
   const babies = openTasks().filter(t => t.type === 'transfer').length;
@@ -1746,9 +1829,9 @@ function renderStaff() {
 }
 function renderTray() {
   const pend = S.decisions.filter(d => !d.done).sort((a, b) => (b.red ? 1 : 0) - (a.red ? 1 : 0) || a.t - b.t);
-  let h = pend.map(d => { const p = pat(d.pid); const v = p ? shortLoc(p.loc || 'priem') : ''; const t = { triage: 'куда её?', ctgS: 'КТГ', ctgP: 'КТГ!', brady: 'брадикардия', pph: 'ПРК', dyst: 'дистоция', ecl: 'эклампсия', chorio: 'лихорадка', pmu: 'врач ПМУ' }[d.kind]; return `<button type="button" class="pill${d.red ? ' red' : d.pop ? ' pm' : ''}" data-act="dec" data-id="${d.id}">${esc(v)}: ${t}</button>`; }).join('');
+  let h = pend.map(d => { const p = pat(d.pid); const v = p ? shortLoc(p.loc || 'priem') : ''; const t = { triage: 'куда её?', ctgS: 'КТГ', ctgP: 'КТГ!', brady: 'брадикардия', pph: 'ПРК', dyst: 'дистоция', ecl: 'эклампсия', chorio: 'лихорадка', pmu: 'врач ПМУ', vipcs: 'звонок из ДЗМ' }[d.kind]; return `<button type="button" class="pill${d.red ? ' red' : d.pop ? ' pm' : ''}" data-act="dec" data-id="${d.id}">${esc(v)}: ${t}</button>`; }).join('');
   const zt = openTasks().filter(t => t.need.zav && !(t.slots.zav || []).length);
-  h += zt.map(t => `<button type="button" class="pill zv" data-act="zavgo" data-task="${t.id}">Зав нужен: ${esc(t.label.toLowerCase())}</button>`).join('');
+  h += zt.map(t => `<button type="button" class="pill zv" data-act="zavgo" data-task="${t.id}">Зав → ${esc(t.label)}</button>`).join('');
   setHTML($('tray'), h);
 }
 const OFFS = [[0, 10], [-15, 10], [15, 10], [-30, 10], [30, 10], [0, -6], [-15, -6], [15, -6], [-30, -6], [30, -6]];
@@ -1848,6 +1931,7 @@ function ctgText(p) {
 }
 function patientBlock(p) {
   const f = [];
+  if (p.vip) f.push(VIP_FROM[p.vip] + ' ' + stars(p.vip));
   if (p.flags.pe) f.push('ПЭ' + (p.flags.mg ? ', магнезия идёт' : ', магнезии нет'));
   if (p.flags.epid) f.push('ЭА стоит'); else if (hasOpen(p, 'epid')) f.push('просит ЭА');
   if (p.flags.prom) f.push('ДИВ');
@@ -1935,7 +2019,7 @@ function settingsSheet() {
   return `<div class="eyebrow">Правила и настройки</div><h2>Как играть</h2>${rulesHTML()}<label class="switch"><input type="checkbox" id="optAuto" data-act="toggle" data-k="auto"${S.auto ? ' checked' : ''}> Дежурные сами бегут на кнопки</label><label class="switch"><input type="checkbox" id="optPause" data-act="toggle" data-k="autoPause"${S.autoPause ? ' checked' : ''}> Пауза на красных вызовах и событиях</label><div class="row"><button type="button" class="btn o" data-act="restart">Сдать смену и начать новую</button>${closeBtn()}</div>`;
 }
 function rulesHTML() {
-  return `<div class="legend"><div><span class="lamps"><i class="lamp g on"></i></span> зелёная — плановый вызов акушера</div><div><span class="lamps"><i class="lamp y on"></i></span> жёлтая — вызов неонатолога</div><div><span class="lamps"><i class="lamp r on"></i></span> красная — экстренный вызов</div><div>Мигает — никто не идёт. Горит — врач в пути.</div><div>Тапни бокс — пациентка и кого послать. Тапни сотрудника — куда отправить или уложить спать.</div><div>Пост — кнопка клининга. Неубранный бокс занять нельзя, ВБИ растёт.</div><div>Врачи ПМУ ведут своих контрактных — разгружают дежурных, но иногда чудят. Разрешить или запретить — решаешь ты.</div><div>Ты — зав: решения в лотке внизу, а в крайнем случае идёшь к столу сам.</div></div>`;
+  return `<div class="legend"><div><span class="lamps"><i class="lamp g on"></i></span> зелёная — плановый вызов акушера</div><div><span class="lamps"><i class="lamp y on"></i></span> жёлтая — вызов неонатолога</div><div><span class="lamps"><i class="lamp r on"></i></span> красная — экстренный вызов</div><div>Мигает — никто не идёт. Горит — врач в пути.</div><div>Тапни бокс — пациентка и кого послать. Тапни сотрудника — куда отправить или уложить спать.</div><div>Пост — кнопка клининга. Неубранный бокс занять нельзя, ВБИ растёт.</div><div>Пациентки от руководства (★–★★★): без очереди, зав осматривает лично, любой промах — звонок сверху.</div><div>Врачи ПМУ ведут своих контрактных — разгружают дежурных, но иногда чудят. Разрешить или запретить — решаешь ты.</div><div>Ты — зав: решения в лотке внизу, а в крайнем случае идёшь к столу сам.</div></div>`;
 }
 
 /* ---------- КТГ ---------- */
@@ -1977,7 +2061,7 @@ function openDecision(id) {
   const d = S.decisions.find(x => x.id === id); if (!d || d.done) return;
   const v = decisionView(d); if (!v) return;
   UI.modal = { kind: 'dec', id };
-  showModal(`<div class="card${v.red ? ' red' : v.pop ? ' gold' : ''}"><div class="eyebrow">${esc(v.where)}${v.red ? ' · красная кнопка' : v.pop ? ' · врач ПМУ' : ''} · ${clock(S.t)}</div><h2>${esc(v.title)}</h2><div class="who">${esc(v.who)}</div>${v.ctg ? ctgSVG(v.ctg, d.id) : ''}<p class="clue">${esc(v.clue)}</p>${v.fact ? `<p class="who">${esc(v.fact)}</p>` : ''}<div class="opts">${v.options.map((o, i) => `<button type="button" class="opt" data-act="choose" data-id="${d.id}" data-i="${i}">${esc(o.label)}</button>`).join('')}</div><button type="button" class="btn o sm" data-act="later" data-id="${d.id}">Решу позже</button></div>`);
+  showModal(`<div class="card${v.red ? ' red' : v.pop ? ' gold' : ''}"><div class="eyebrow">${esc(v.where)}${v.red ? ' · красная кнопка' : v.pop ? (d.kind === 'vipcs' ? ' · руководство' : ' · врач ПМУ') : ''} · ${clock(S.t)}</div><h2>${esc(v.title)}</h2><div class="who">${esc(v.who)}</div>${v.ctg ? ctgSVG(v.ctg, d.id) : ''}<p class="clue">${esc(v.clue)}</p>${v.fact ? `<p class="who">${esc(v.fact)}</p>` : ''}<div class="opts">${v.options.map((o, i) => `<button type="button" class="opt" data-act="choose" data-id="${d.id}" data-i="${i}">${esc(o.label)}</button>`).join('')}</div><button type="button" class="btn o sm" data-act="later" data-id="${d.id}">Решу позже</button></div>`);
 }
 function showFeedback(res) {
   const m = $('modal').querySelector('.card'); if (!m) return closeModal();
@@ -2006,7 +2090,7 @@ function openReport() {
   const cell = (b, s) => `<div><b>${b}</b><span>${s}</span></div>`;
   const rev = S.review.filter(x => x.byZav && !x.ok).slice(-8);
   showModal(`<div class="card"><div class="eyebrow">Сдача смены · 08:00</div><p class="big">${Math.round(S.score)}</p><div class="stars" aria-label="${F.stars} из 3">${'★'.repeat(F.stars)}${'☆'.repeat(3 - F.stars)}</div><h2>${esc(F.title)}</h2>${best ? `<div class="who">Прошлый рекорд: ${best}</div>` : ''}
-  <div class="rep">${cell(st.births, 'родов')}${cell(Math.round(F.csRate * 100) + '%', 'доля КС')}${cell(st.vep, 'ВЭП')}${cell(st.csEm, 'экстренных КС')}${cell(st.csNeedless, 'КС без показаний')}${cell(st.pph, 'ПРК')}${cell(st.kas, 'КАС')}${cell(st.asph, 'асфиксий')}${cell(st.oritn, 'в ОРИТН')}${cell(st.chorio, 'хориоамнионитов')}${cell(Math.round(S.vbiPeak), 'пик ВБИ')}${cell(st.palata, 'родов вне бокса')}${cell(st.noDoc, 'родов без врача')}${cell(st.complaints, 'жалоб')}${cell(st.decOk + '/' + st.decAll, 'верных решений')}${cell((st.bossWon || 0) + '/' + (S.waves ? S.waves.length : 0), 'боссов повержено')}${cell(st.arrivals, 'поступило')}${cell(st.maxQueue, 'макс. очередь')}${cell(st.pmuBirths || 0, 'контрактных родов')}${cell(st.pmuStopped || 0, 'абсурда остановлено')}${cell(st.pmuMissed || 0, 'абсурда пропущено')}</div>
+  <div class="rep">${cell(st.births, 'родов')}${cell(Math.round(F.csRate * 100) + '%', 'доля КС')}${cell(st.vep, 'ВЭП')}${cell(st.csEm, 'экстренных КС')}${cell(st.csNeedless, 'КС без показаний')}${cell(st.pph, 'ПРК')}${cell(st.kas, 'КАС')}${cell(st.asph, 'асфиксий')}${cell(st.oritn, 'в ОРИТН')}${cell(st.chorio, 'хориоамнионитов')}${cell(Math.round(S.vbiPeak), 'пик ВБИ')}${cell(st.palata, 'родов вне бокса')}${cell(st.noDoc, 'родов без врача')}${cell(st.complaints, 'жалоб')}${cell(st.decOk + '/' + st.decAll, 'верных решений')}${cell((st.bossWon || 0) + '/' + (S.waves ? S.waves.length : 0), 'боссов повержено')}${cell(st.arrivals, 'поступило')}${cell(st.maxQueue, 'макс. очередь')}${cell(st.pmuBirths || 0, 'контрактных родов')}${cell(st.pmuStopped || 0, 'абсурда остановлено')}${cell(st.pmuMissed || 0, 'абсурда пропущено')}${cell(st.vipTotal || 0, 'от руководства')}${cell(st.vipOk || 0, 'руководство довольно')}${cell(st.vipBad || 0, 'звонков сверху')}</div>
   ${F.bonus.length ? `<div class="who"><b>Бонусы:</b> ${esc(F.bonus.join(' · '))}</div>` : ''}
   ${rev.length ? `<h3>Разбор ошибок</h3><div class="revl">${rev.map(x => `<div><span class="bad-t">${clock(x.t)} ${esc(x.where)} · ${esc(x.title)}</span><br>Выбрано: ${esc(x.choice)}<br>Правильнее: ${esc(x.best || '')}<br>${esc(x.why)}</div>`).join('')}</div>` : '<div class="who">Ошибок в решениях нет.</div>'}
   <button type="button" class="btn" data-act="restart">Новая смена</button></div>`);

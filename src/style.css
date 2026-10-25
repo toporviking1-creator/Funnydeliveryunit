@@ -238,3 +238,5 @@ h3 { font-size: 15px; margin: 0; }
 .card.gold { border-color: var(--gold); box-shadow: 0 0 0 4px color-mix(in srgb, var(--gold) 35%, transparent); }
 .card.gold .eyebrow { color: var(--warn); }
 .pill.pm { border-color: var(--gold); color: var(--gold); }
+.tag.vip { background: var(--gold); border-color: var(--gold); color: #1A1200; }
+.qd.vip { background: var(--gold); border-color: var(--gold); }

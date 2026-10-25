@@ -1,7 +1,7 @@
 const fs = require('fs');
 const vm = require('vm');
 const dir = require('path').join(__dirname, '..', 'src') + '/';
-const code = ['data.js', 'engine1.js', 'engine2.js', 'engine3.js', 'engine4.js', 'engine5.js'].map(f => fs.readFileSync(dir + f, 'utf8')).join('\n');
+const code = ['data.js', 'engine1.js', 'engine2.js', 'engine3.js', 'engine4.js', 'engine5.js', 'engine6.js'].map(f => fs.readFileSync(dir + f, 'utf8')).join('\n');
 
 function run(seed, mode) {
   const ctx = { module: { exports: {} }, console, Math, Object, Array, String, Number, JSON, Date };
@@ -42,7 +42,7 @@ function run(seed, mode) {
   const st = S.st;
   const counts = { obst: 3, anest: 3, neo: 2, reanim: 2, clean: 2, zav: 1 };
   const util = Object.fromEntries(Object.entries(staffBusy).map(([r, n]) => [r, Math.round(100 * n / (1440 * counts[r]))]));
-  return { seed, score: Math.round(S.score), title: S.final && S.final.title, arr: st.arrivals, births: st.births, vag: st.vag, vep: st.vep, cs: st.cs, csEm: st.csEm, needless: st.csNeedless, csRate: Math.round(100 * (S.final ? S.final.csRate : 0)), pph: st.pph, kas: st.kas, asph: st.asph, oritn: st.oritn, chorio: st.chorio, palata: st.palata, noDoc: st.noDoc, compl: st.complaints, maxQ: st.maxQueue, vbiPeak: Math.round(S.vbiPeak), dirtyUse: st.dirtyUse, dec: st.decOk + '/' + st.decAll, minE: Math.round(minEnergy), util, maxOpen, maxDirty, maxWantBox, left: S.final && S.final.left, boss: st.bossWon + '/' + (st.bossWon + st.bossLost), pmu: st.pmuBirths + ' стоп ' + st.pmuStopped + ' пропущ ' + st.pmuMissed, waves: S.waves.map(w => w.k + ':' + w.state + '@' + w.t).join(' ') };
+  return { seed, score: Math.round(S.score), title: S.final && S.final.title, arr: st.arrivals, births: st.births, vag: st.vag, vep: st.vep, cs: st.cs, csEm: st.csEm, needless: st.csNeedless, csRate: Math.round(100 * (S.final ? S.final.csRate : 0)), pph: st.pph, kas: st.kas, asph: st.asph, oritn: st.oritn, chorio: st.chorio, palata: st.palata, noDoc: st.noDoc, compl: st.complaints, maxQ: st.maxQueue, vbiPeak: Math.round(S.vbiPeak), dirtyUse: st.dirtyUse, dec: st.decOk + '/' + st.decAll, minE: Math.round(minEnergy), util, maxOpen, maxDirty, maxWantBox, left: S.final && S.final.left, boss: st.bossWon + '/' + (st.bossWon + st.bossLost), pmu: st.pmuBirths + ' стоп ' + st.pmuStopped + ' пропущ ' + st.pmuMissed, vip: st.vipOk + '/' + st.vipTotal + ' звонков ' + st.vipBad, waves: S.waves.map(w => w.k + ':' + w.state + '@' + w.t).join(' ') };
 }
 const mode = process.argv[2] || 'good';
 const n = +(process.argv[3] || 6);

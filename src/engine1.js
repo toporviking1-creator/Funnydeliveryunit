@@ -34,7 +34,7 @@ function newGame(seed) {
     score: 0, vbi: 6, vbiPeak: 6, pauseReq: false,
     mod: { arrival: 1, arrivalUntil: 0, rest: 1, restUntil: 0 },
     slow: {}, ev: { next: rint(45, 80), used: {} }, dzm: null,
-    st: { arrivals: 0, births: 0, vag: 0, vep: 0, cs: 0, csEm: 0, csNeedless: 0, pph: 0, kas: 0, asph: 0, oritn: 0, chorio: 0, palata: 0, complaints: 0, noDoc: 0, dyst: 0, decOk: 0, decAll: 0, maxQueue: 0, dirtyUse: 0, cleaned: 0, pmuBirths: 0, pmuStopped: 0, pmuMissed: 0 },
+    st: { arrivals: 0, births: 0, vag: 0, vep: 0, cs: 0, csEm: 0, csNeedless: 0, pph: 0, kas: 0, asph: 0, oritn: 0, chorio: 0, palata: 0, complaints: 0, noDoc: 0, dyst: 0, decOk: 0, decAll: 0, maxQueue: 0, dirtyUse: 0, cleaned: 0, pmuBirths: 0, pmuStopped: 0, pmuMissed: 0, vipTotal: 0, vipOk: 0, vipBad: 0 },
   };
   for (const id of BED_IDS) S.rooms[id] = { id, pid: null, dirty: false, cleanTask: null, dirtyAfter: false };
   for (const r of ROSTER) S.staff.push({ id: r.id, role: r.role, name: r.name, short: r.short, f: r.f || 0, energy: rint(80, 100), loc: r.start, dest: null, eta: 0, depart: 0, state: 'idle', taskId: null, slot: null, rest: false, forced: false, awayUntil: 0 });

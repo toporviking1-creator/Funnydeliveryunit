@@ -68,6 +68,7 @@ HANDLERS.cs = tk => {
   born(p, 'cs');
   cancelTasks(p, ['birth']);
   vacate(p, true); p.phase = 'gone';
+  vipResolve(p);
 };
 
 /* ---------- решения зава ---------- */
@@ -90,6 +91,7 @@ function decisionView(d) {
   const where = locName(p.loc || 'priem');
   const base = { where, who: patLine(p), red: !!d.red, pop: !!d.pop };
   if (d.kind === 'pmu') return pmuView(d, p, base);
+  if (d.kind === 'vipcs') return vipView(d, p, base);
   if (d.kind === 'triage') {
     const c = CASE[p.kind] || CASE.active;
     const extra = p.flags.blogger ? ' Принесла план родов на 12 листах.' : '';
@@ -132,7 +134,7 @@ function decide(id, idx) { const d = S.decisions.find(x => x.id === id); if (!d 
 function decisionsTick() {
   for (const d of S.decisions) {
     if (d.done) continue;
-    if (d.kind === 'pmu') { if (S.t - d.t >= 12) { const v = decisionView(d); applyDecision(d, v ? Math.max(0, v.options.findIndex(o => o.k === 'allow')) : 0, false); note('Врач ПМУ не дождался зава и сделал по-своему', 'warn'); } continue; }
+    if (d.kind === 'pmu' || d.kind === 'vipcs') { if (S.t - d.t >= 12) { const v = decisionView(d); const ak = d.kind === 'pmu' ? 'allow' : 'yes'; applyDecision(d, v ? Math.max(0, v.options.findIndex(o => o.k === ak)) : 0, false); note(d.kind === 'pmu' ? 'Врач ПМУ не дождался зава и сделал по-своему' : 'Руководство дозвонилось дежурному — пациентку повезли на КС', 'warn'); } continue; }
     const lim = d.red ? 4 : d.kind === 'triage' ? 25 : 20;
     if (S.t - d.t >= lim) {
       const v = decisionView(d);
@@ -256,6 +258,7 @@ function eventChoice(id, idx) {
   const c = S.modals.find(m => m.id === id);
   if (!c) return;
   c.chosen = idx;
+  if (c.k === 'vipcall') vipCallChoice(c, idx);
   if (c.k === 'mil') {
     if (idx === 0) addTask({ type: 'mil', loc: 'priem', label: 'Поговорить со свекровью', need: { zav: 1 }, dur: 15, pri: 1, deadline: S.t + 30, failAt: S.t + 90 });
     else if (chance(0.5)) complaint(null, 'свекровь написала в ДЗМ');

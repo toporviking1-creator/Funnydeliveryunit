@@ -52,6 +52,7 @@ function ptChip(p, sm) {
 }
 function tagsOf(p, max) {
   const t = [];
+  if (p.vip) t.push('<span class="tag vip">' + stars(p.vip) + '</span>');
   if (p.flags.contract && p.pmu) t.push('<span class="tag g">ПМУ</span>');
   if (p.flags.pe) t.push('<span class="tag r">ПЭ</span>');
   if (p.flags.chorio && p.bornT == null) t.push('<span class="tag r">t°</span>');
@@ -82,6 +83,7 @@ function renderBed(id) {
   let h = '';
   if (p) {
     h += ptChip(p, true);
+    if (p.vip) h += '<span class="tag vip">' + stars(p.vip) + '</span>';
     const dec = S.decisions.find(d => !d.done && d.pid === p.id);
     if (dec) h += '<span class="tag w">?</span>';
     else if (p.want === 'box') h += '<span class="tag">→бокс</span>';
@@ -107,7 +109,7 @@ function renderPriem() {
   const q = S.queue.map(pat).filter(Boolean);
   const longest = q.length ? S.t - Math.min(...q.map(p => p.arrived)) : 0;
   const extra = livePatients().filter(p => p.loc === 'priem' && p.phase !== 'queue');
-  setHTML($('r-priem'), `<div class="lbl"><span>Приёмное</span>${lampHTML(lampState('priem'))}</div><div class="sub">${q.length ? 'Очередь ' + q.length + (q.some(p => p.src === 'opb') ? ' (ОПБ ' + q.filter(p => p.src === 'opb').length + ')' : '') + ' · ждёт ' + longest + ' мин' : 'Очереди нет'}</div><div class="queue">${q.map(p => `<span class="qd${p.lab === 'second' ? ' hot' : p.src === 'opb' ? ' opb' : ''}"></span>`).join('')}${extra.map(p => ptChip(p, true)).join('')}</div>`);
+  setHTML($('r-priem'), `<div class="lbl"><span>Приёмное</span>${lampHTML(lampState('priem'))}</div><div class="sub">${q.length ? 'Очередь ' + q.length + (q.some(p => p.src === 'opb') ? ' (ОПБ ' + q.filter(p => p.src === 'opb').length + ')' : '') + ' · ждёт ' + longest + ' мин' : 'Очереди нет'}</div><div class="queue">${q.map(p => `<span class="qd${p.lab === 'second' ? ' hot' : p.vip ? ' vip' : p.src === 'opb' ? ' opb' : ''}"></span>`).join('')}${extra.map(p => ptChip(p, true)).join('')}</div>`);
 }
 function renderMisc() {
   const babies = openTasks().filter(t => t.type === 'transfer').length;
@@ -153,9 +155,9 @@ function renderStaff() {
 }
 function renderTray() {
   const pend = S.decisions.filter(d => !d.done).sort((a, b) => (b.red ? 1 : 0) - (a.red ? 1 : 0) || a.t - b.t);
-  let h = pend.map(d => { const p = pat(d.pid); const v = p ? shortLoc(p.loc || 'priem') : ''; const t = { triage: 'куда её?', ctgS: 'КТГ', ctgP: 'КТГ!', brady: 'брадикардия', pph: 'ПРК', dyst: 'дистоция', ecl: 'эклампсия', chorio: 'лихорадка', pmu: 'врач ПМУ' }[d.kind]; return `<button type="button" class="pill${d.red ? ' red' : d.pop ? ' pm' : ''}" data-act="dec" data-id="${d.id}">${esc(v)}: ${t}</button>`; }).join('');
+  let h = pend.map(d => { const p = pat(d.pid); const v = p ? shortLoc(p.loc || 'priem') : ''; const t = { triage: 'куда её?', ctgS: 'КТГ', ctgP: 'КТГ!', brady: 'брадикардия', pph: 'ПРК', dyst: 'дистоция', ecl: 'эклампсия', chorio: 'лихорадка', pmu: 'врач ПМУ', vipcs: 'звонок из ДЗМ' }[d.kind]; return `<button type="button" class="pill${d.red ? ' red' : d.pop ? ' pm' : ''}" data-act="dec" data-id="${d.id}">${esc(v)}: ${t}</button>`; }).join('');
   const zt = openTasks().filter(t => t.need.zav && !(t.slots.zav || []).length);
-  h += zt.map(t => `<button type="button" class="pill zv" data-act="zavgo" data-task="${t.id}">Зав нужен: ${esc(t.label.toLowerCase())}</button>`).join('');
+  h += zt.map(t => `<button type="button" class="pill zv" data-act="zavgo" data-task="${t.id}">Зав → ${esc(t.label)}</button>`).join('');
   setHTML($('tray'), h);
 }
 const OFFS = [[0, 10], [-15, 10], [15, 10], [-30, 10], [30, 10], [0, -6], [-15, -6], [15, -6], [-30, -6], [30, -6]];
